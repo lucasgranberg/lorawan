@@ -1,0 +1,13 @@
+{
+  "editor.formatOnSave": true,
+  "rust-analyzer.checkOnSave": true,
+  "rust-analyzer.cargo.target": "thumbv7em-none-eabi",
+  "rust-analyzer.cargo.buildScripts.invocationLocation": "workspace",
+  "rust-analyzer.check.features": "all",
+  "rust-analyzer.check.allTargets": false,
+  "rust-analyzer.check.extraArgs": [
+    "--target",
+    "thumbv7em-none-eabi"
+  ],
+  "rust-analyzer.check.overrideCommand": null
+}
