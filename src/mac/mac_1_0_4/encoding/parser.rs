@@ -4,14 +4,13 @@ use crate::{
     channel_mask::ChannelMask,
     encoding::{
         keys::{CryptoFactory, Encrypter, AES128, MIC},
+        maccommands::DLSettings,
         parser::*,
         securityhelpers,
     },
     frequency::Frequency,
     CfList,
 };
-
-use super::maccommands::DLSettings;
 
 /// DecryptedJoinAcceptPayload represents a decrypted JoinAccept.
 ///

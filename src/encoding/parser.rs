@@ -408,7 +408,7 @@ where
     }
 }
 
-fn check_phy_data<'a, 'b>(bytes: &'a [u8]) -> Result<(), &'b str> {
+fn check_phy_data(bytes: &[u8]) -> Result<(), &'static str> {
     let len = bytes.len();
     if len == 0 {
         return Err("can not parse empty payload as LoRaWAN phy payload");
