@@ -1,6 +1,6 @@
 use crate::encoding::maccommands::*;
 
-mac_commands! {
+mac_cmds_enum! {
     pub enum DownlinkMacCommand<'a> {
         LinkCheckAns(LinkCheckAnsPayload<'a>)
         LinkADRReq(LinkADRReqPayload<'a>)
@@ -15,7 +15,7 @@ mac_commands! {
     }
 }
 
-mac_commands! {
+mac_cmds_enum! {
     pub enum UplinkMacCommand<'a> {
         LinkCheckReq(LinkCheckReqPayload)
         LinkADRAns(LinkADRAnsPayload<'a>)

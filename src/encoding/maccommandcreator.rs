@@ -1,11 +1,3 @@
-// Copyright (c) 2018-2020 Ivaylo Petrov
-//
-// Licensed under the MIT license <LICENSE-MIT or
-// http://opensource.org/licenses/MIT>, at your option. This file may not be
-// copied, modified, or distributed except according to those terms.
-//
-// Author: Ivaylo Petrov <ivajloip@gmail.com>
-
 use super::maccommands::*;
 
 macro_rules! impl_mac_cmd_creator_boilerplate {
@@ -25,6 +17,14 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
             /// Returns the serialized version of the class as bytes.
             pub fn build(&self) -> &[u8] {
                 &[$cid]
+            }
+
+            pub const fn cid(&self) -> u8 {
+                $cid
+            }
+
+            pub const fn len(&self) -> usize {
+                0
             }
         }
 
@@ -55,6 +55,14 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
             pub fn get_data(self) -> [u8; $len] {
                 self.data
             }
+
+            pub const fn cid(&self) -> u8 {
+                $cid
+            }
+
+            pub const fn len(&self) -> usize {
+                $len
+            }
         }
 
         impl_mac_cmd_payload!($type);
@@ -81,6 +89,56 @@ macro_rules! impl_mac_cmd_payload {
         }
     };
 }
+
+macro_rules! mac_cmds_creator_enum {
+    (
+        $outer_vis:vis enum $outer_type:ident$(<$outer_lifetime:lifetime>),* {
+        $(
+            $name:ident
+        )*
+    }
+    ) => {
+        $outer_vis enum $outer_type$(<$outer_lifetime>)* {
+            $(
+                $name(concat_idents!($name,Creator)),
+            )*
+        }
+        impl$(<$outer_lifetime>)* $outer_type$(<$outer_lifetime>)* {
+            pub fn len(&self) -> usize {
+                match self {
+                    $(
+                        Self::$name(creator) => creator.len(),
+                    )*
+                }
+            }
+            pub fn bytes(&self) -> &[u8] {
+                match *self {
+                    $(
+                        Self::$name(ref v) => v.build(),
+                    )*
+                }
+            }
+        }
+        impl SerializableMacCommand for $outer_type$(<$outer_lifetime>)* {
+            fn payload_bytes(&self) -> &[u8] {
+                self.bytes()
+            }
+
+            fn cid(&self) -> u8 {
+                match self {
+                    $(
+                        Self::$name(creator) => creator.cid(),
+                    )*
+                }
+            }
+
+            fn payload_len(&self) -> usize {
+                self.len()
+            }
+        }
+    }
+}
+pub(crate) use mac_cmds_creator_enum;
 
 /// LinkCheckReqCreator serves for creating LinkCheckReq MacCommand.
 ///

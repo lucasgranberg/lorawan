@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 #![feature(type_alias_impl_trait)]
+#![feature(concat_idents)]
 
 use channel_mask::ChannelMask;
 use frequency::Frequency;

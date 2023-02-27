@@ -86,7 +86,7 @@ macro_rules! mac_cmds {
     }
 }
 
-macro_rules! mac_commands {
+macro_rules! mac_cmds_enum {
     (
         $outer_vis:vis enum $outer_type:ident$(<$outer_lifetime:lifetime>),* {
         $(
@@ -184,7 +184,7 @@ macro_rules! mac_commands {
         }
     }
 }
-pub(crate) use mac_commands;
+pub(crate) use mac_cmds_enum;
 
 mac_cmd_zero_len! {
     /// LinkCheckReqPayload represents the LinkCheckReq LoRaWAN MACCommand.
