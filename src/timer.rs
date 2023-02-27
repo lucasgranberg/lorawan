@@ -7,7 +7,7 @@ pub trait Timer {
     where
         Self: 'm;
 
-    fn at<'m>(&'m mut self, millis: u64) -> Self::AtFuture<'m>;
+    fn at(&mut self, millis: u64) -> Self::AtFuture<'_>;
 
     type DelayFuture: Future<Output = ()>;
     /// Delay for millis milliseconds

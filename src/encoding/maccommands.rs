@@ -22,10 +22,6 @@ macro_rules! mac_cmd_zero_len {
                     Ok($type())
                 }
 
-                // pub fn new_as_mac_cmd<'a>(data: &[u8]) -> Result<(MacCommand<'a>, usize), &str> {
-                //     Ok((MacCommand::$name($type::new(data)?), 0))
-                // }
-
                 pub const fn cid() -> u8 {
                     $cid
                 }
@@ -42,15 +38,6 @@ macro_rules! mac_cmd_zero_len {
                 }
             }
         )*
-
-        // fn parse_zero_len_mac_cmd<'a, 'b>(data: &'a [u8], uplink: bool) -> Result<(usize, MacCommand<'a>), &'b str> {
-        //     match (data[0], uplink) {
-        //         $(
-        //             ($cid, $uplink) => Ok((0, MacCommand::$name($type::new(&[])?))),
-        //         )*
-        //         _ => Err("uknown mac command")
-        //     }
-        // }
     }
 }
 
@@ -75,10 +62,6 @@ macro_rules! mac_cmds {
                         Ok($type(&data))
                     }
                 }
-
-                // pub fn new_as_mac_cmd<'b>(data: &'a [u8]) -> Result<(MacCommand<'a>, usize), &'b str> {
-                //     Ok((MacCommand::$name($type::new(data)?), $size))
-                // }
 
                 /// Command identifier.
                 pub const fn cid() -> u8 {
@@ -757,7 +740,7 @@ impl DeviceTimeAnsPayload<'_> {
     }
     //raw value in 1/256 seconds
     pub fn nano_seconds(&self) -> u32 {
-        u32::from((self.0[4] as u32) * 3906250)
+        (self.0[4] as u32) * 3906250
     }
 }
 pub trait SerializableMacCommand {

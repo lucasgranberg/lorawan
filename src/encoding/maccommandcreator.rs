@@ -654,10 +654,10 @@ pub struct DeviceTimeAnsCreator {
 }
 impl_mac_cmd_creator_boilerplate!(DeviceTimeAnsCreator, 0x0D, 5);
 
-pub fn build_mac_commands<'a, 'b, 'c, T: AsMut<[u8]>>(
-    cmds: &'a [&'b dyn SerializableMacCommand],
+pub fn build_mac_commands<T: AsMut<[u8]>>(
+    cmds: &[&dyn SerializableMacCommand],
     mut out: T,
-) -> Result<usize, &'c str> {
+) -> Result<usize, &'static str> {
     let res = out.as_mut();
     if mac_commands_len(cmds) > res.len() {
         return Err("failed to serialize mac commands in provided buffer: too small");

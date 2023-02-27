@@ -384,7 +384,7 @@ pub fn parse<'a, T: AsRef<[u8]> + AsMut<[u8]>>(
 ///
 /// * bytes - the data from which the PhyPayload is to be built.
 /// * factory - the factory that shall be used to create object for crypto functions.
-pub fn parse_with_factory<'a, T, F>(data: T, factory: F) -> Result<PhyPayload<T, F>, &'static str>
+pub fn parse_with_factory<T, F>(data: T, factory: F) -> Result<PhyPayload<T, F>, &'static str>
 where
     T: AsRef<[u8]> + AsMut<[u8]>,
     F: CryptoFactory,

@@ -156,10 +156,7 @@ where
     fn create_tx_config(&self, frame: &Frame) -> TxConfig {
         todo!()
     }
-    fn handle_downlink_macs<'b, 'c>(
-        &mut self,
-        cmds: MacCommandIterator<'b, DownlinkMacCommand<'c>>,
-    ) {
+    fn handle_downlink_macs<'b>(&mut self, cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>) {
         todo!()
     }
     fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error<P::PhyError>> {
