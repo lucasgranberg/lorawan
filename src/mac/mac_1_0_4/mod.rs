@@ -2,7 +2,8 @@ use core::{future::Future, marker::PhantomData};
 
 use self::encoding::{
     creator::DataPayloadCreator,
-    maccommandcreator::MacCommandCreator,
+    maccommandcreator::UplinkMacCommandCreator,
+    maccommands::DownlinkMacCommand,
     parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
 };
 use crate::{
@@ -107,7 +108,7 @@ struct Mac<'a, R, C, T, P, RNG: RngCore, const N: usize = 256> {
     region: PhantomData<R>,
     crypto: PhantomData<C>,
     radio: PhantomData<P>,
-    cmds: Vec<MacCommandCreator, 15>,
+    cmds: Vec<UplinkMacCommandCreator, 15>,
 }
 impl<'a, R, C, T, P, RNG> Mac<'a, R, C, T, P, RNG>
 where
@@ -155,10 +156,13 @@ where
     fn create_tx_config(&self, frame: &Frame) -> TxConfig {
         todo!()
     }
-    fn handle_downlink_macs(&mut self, cmds: MacCommandIterator) {
+    fn handle_downlink_macs<'b, 'c>(
+        &mut self,
+        cmds: MacCommandIterator<'b, DownlinkMacCommand<'c>>,
+    ) {
         todo!()
     }
-    fn add_uplink_cmd(&mut self, cmd: MacCommandCreator) -> Result<(), Error<P::PhyError>> {
+    fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error<P::PhyError>> {
         self.cmds.push(cmd).map_err(|_| Error::FOptsFull)
     }
 
@@ -248,7 +252,7 @@ where
                 Err(e) => Err(Error::UnableToPreparePayload),
             }
         } else {
-            return Err(Error::NetworkNotJoined);
+            Err(Error::NetworkNotJoined)
         }
     }
 }
@@ -280,7 +284,7 @@ where
             let _ms = radio
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
-                .map_err(|e| Error::Radio(e))?;
+                .map_err(Error::Radio)?;
             self.timer.reset();
 
             // Receive join response within RX window
@@ -299,7 +303,7 @@ where
                             DevNonce::<[u8; 2]>::new_from_raw(
                                 self.credentials.dev_nonce.to_le_bytes(),
                             ),
-                            &self.credentials,
+                            self.credentials,
                         );
                         self.session.replace(session);
                         Ok(())
@@ -336,7 +340,7 @@ where
             let _ms = radio
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
-                .map_err(|e| Error::Radio(e))?;
+                .map_err(Error::Radio)?;
 
             // Wait for received data within window
             self.timer.reset();
@@ -347,7 +351,7 @@ where
             if let Some(ref mut session_data) = self.session {
                 // Parse payload and copy into user bufer is provided
                 let res = parse_with_factory(radio_buffer.as_mut(), C::default());
-                let ret: Result<usize, Error<P::PhyError>> = match res {
+                match res {
                     Ok(PhyPayload::Data(encrypted_data)) => {
                         if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
                             let fcnt = encrypted_data.fhdr().fcnt() as u32;
@@ -372,14 +376,14 @@ where
                                 .unwrap();
 
                                 self.cmds.clear(); //clear cmd buffer
-                                self.handle_downlink_macs(decrypted.fhdr().fopts());
+                                self.handle_downlink_macs((&decrypted.fhdr()).into());
 
                                 if confirmed {
                                     self.status.confirm_next = true;
                                 }
                                 match decrypted.frm_payload() {
                                     Ok(FRMPayload::MACCommands(mac_cmds)) => {
-                                        self.handle_downlink_macs(mac_cmds.mac_commands());
+                                        self.handle_downlink_macs((&mac_cmds).into());
                                         Ok(0)
                                     }
                                     Ok(FRMPayload::Data(rx_data)) => {
@@ -403,8 +407,7 @@ where
                     }
                     Ok(_) => Err(Error::UnableToDecodePayload("")),
                     Err(e) => Err(Error::UnableToDecodePayload(e)),
-                };
-                return ret;
+                }
             } else {
                 Err(Error::NetworkNotJoined)
             }

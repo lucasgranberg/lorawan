@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 /// Calculates the len in bytes of a sequence of mac commands, including th CIDs.
 pub fn mac_commands_len(cmds: &[&dyn SerializableMacCommand]) -> usize {
     cmds.iter().map(|mc| mc.payload_len() + 1).sum()
@@ -34,6 +36,9 @@ macro_rules! mac_cmd_zero_len {
 
                 pub const fn len() -> usize {
                     0
+                }
+                pub fn bytes (&self) -> &[u8]{
+                    &[]
                 }
             }
         )*
@@ -89,19 +94,114 @@ macro_rules! mac_cmds {
                 pub const fn len() -> usize {
                     $size
                 }
+
+                pub fn bytes (&self) -> &[u8]{
+                    self.0
+                }
             }
         )*
-
-        // fn parse_one_mac_cmd<'a, 'b>(data: &'a [u8], uplink: bool) -> Result<(usize, MacCommand<'a>), &'b str> {
-        //     match (data[0], uplink) {
-        //         $(
-        //             ($cid, $uplink) if data.len() > $size => Ok(($size, MacCommand::$name($type::new(&data[1.. 1 + $size])?))),
-        //         )*
-        //         _ => parse_zero_len_mac_cmd(data, uplink)
-        //     }
-        // }
     }
 }
+
+macro_rules! mac_commands {
+    (
+        $outer_vis:vis enum $outer_type:ident$(<$outer_lifetime:lifetime>),* {
+        $(
+            $name:ident($type:ident$(<$lifetime:lifetime>),*)
+        )*
+    }
+    ) => {
+        $outer_vis enum $outer_type$(<$outer_lifetime>)* {
+            $(
+                $name($type$(<$lifetime>)*),
+            )*
+        }
+        impl$(<$outer_lifetime>)* $outer_type$(<$outer_lifetime>)* {
+            pub fn len(&self) -> usize {
+                match *self {
+                    $(
+                        Self::$name(_) => $type::len(),
+                    )*
+                }
+            }
+            pub fn uplink(&self) -> bool {
+                match *self {
+                    $(
+                        Self::$name(_) => $type::uplink(),
+                    )*
+                }
+            }
+            pub fn bytes(&self) -> &[u8] {
+                match *self {
+                    $(
+                        Self::$name(ref v) => v.bytes(),
+                    )*
+                }
+            }
+        }
+
+        impl$(<$outer_lifetime>)* SerializableMacCommand for $outer_type$(<$outer_lifetime>)* {
+            fn payload_bytes(&self) -> &[u8] {
+                self.bytes()
+            }
+
+            fn cid(&self) -> u8 {
+                match *self {
+                    $(
+                        Self::$name(_) => $type::cid(),
+                    )*
+                }
+            }
+
+            fn payload_len(&self) -> usize {
+                self.len()
+            }
+        }
+
+        impl$(<$outer_lifetime>)* Iterator for MacCommandIterator<$($outer_lifetime)*, $outer_type$(<$outer_lifetime>)*> {
+            type Item = $outer_type$(<$outer_lifetime>)*;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.index < self.data.len() {
+                    let data = &self.data[self.index..];
+                    $(
+                        if data[0] == $type::cid() && data.len() > $type::len() {
+                            Some($outer_type::$name($type::new(&data[1.. 1 + $type::len()]).unwrap()))
+                        } else
+                    )* {
+                        None
+                    }
+                }else{
+                    None
+                }
+            }
+        }
+        impl<'a> From<&'a crate::encoding::parser::FHDR<'a>>
+            for MacCommandIterator<$($outer_lifetime)*, $outer_type$(<$outer_lifetime>)*>
+        {
+            fn from(fhdr: &'a crate::encoding::parser::FHDR) -> Self {
+                Self {
+                    data: &fhdr.0[7_usize..(7 + fhdr.fopts_len()) as usize],
+                    index: 0,
+                    item: core::marker::PhantomData,
+                }
+            }
+        }
+
+        impl<'a> From<&'a crate::encoding::parser::FRMMacCommands<'a>>
+            for MacCommandIterator<$($outer_lifetime)*, $outer_type$(<$outer_lifetime>)*>
+        {
+            fn from(frmm: &'a crate::encoding::parser::FRMMacCommands) -> Self {
+                Self {
+                    data: frmm.1,
+                    index: 0,
+                    item: core::marker::PhantomData,
+                }
+            }
+        }
+    }
+}
+pub(crate) use mac_commands;
 
 mac_cmd_zero_len! {
     /// LinkCheckReqPayload represents the LinkCheckReq LoRaWAN MACCommand.
@@ -231,50 +331,12 @@ macro_rules! create_value_reader_fn {
     )
 }
 
-/// Parses bytes to mac commands if possible.
-///
-/// Could return error if some values are out of range or the payload does not end at mac command
-/// boundry.
-/// # Argument
-///
-/// * bytes - the data from which the MAC commands are to be built.
-/// * uplink - whether the packet is uplink or downlink.
-///
-/// # Examples
-///
-/// ```
-/// let mut data = vec![0x02, 0x03, 0x00];
-/// let mac_cmds: Vec<lorawan::maccommands::MacCommand> =
-///     lorawan::maccommands::parse_mac_commands(&data[..], true).collect();
-/// ```
-pub fn parse_mac_commands(data: &[u8], uplink: bool) -> MacCommandIterator {
-    MacCommandIterator {
-        index: 0,
-        data,
-        uplink,
-    }
-}
-
 /// Implementation of iterator for mac commands.
-pub struct MacCommandIterator<'a> {
-    data: &'a [u8],
-    index: usize,
-    uplink: bool,
+pub struct MacCommandIterator<'a, T> {
+    pub(crate) data: &'a [u8],
+    pub(crate) index: usize,
+    pub(crate) item: PhantomData<T>,
 }
-
-// impl<'a> Iterator for MacCommandIterator<'a> {
-//     type Item = MacCommand<'a>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.index < self.data.len() {
-//             if let Ok((l, v)) = parse_one_mac_cmd(&self.data[self.index..], self.uplink) {
-//                 self.index += 1 + l;
-//                 return Some(v);
-//             }
-//         }
-//         None
-//     }
-// }
 
 impl<'a> LinkCheckAnsPayload<'a> {
     create_value_reader_fn!(

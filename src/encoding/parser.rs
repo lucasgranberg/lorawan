@@ -1,5 +1,5 @@
 use super::keys::{CryptoFactory, AES128, MIC};
-use super::maccommands::{parse_mac_commands, MacCommandIterator};
+//use super::maccommands::{parse_mac_commands, MacCommandIterator};
 use super::securityhelpers;
 
 #[cfg(feature = "default-crypto")]
@@ -522,7 +522,7 @@ fixed_len_struct! {
 
 /// FHDR represents FHDR from DataPayload.
 #[derive(Debug, PartialEq, Eq)]
-pub struct FHDR<'a>(&'a [u8], bool);
+pub struct FHDR<'a>(pub(crate) &'a [u8], pub(crate) bool);
 
 impl<'a> FHDR<'a> {
     pub fn new_from_raw(bytes: &'a [u8], uplink: bool) -> FHDR {
@@ -555,10 +555,8 @@ impl<'a> FHDR<'a> {
         (u16::from(self.0[6]) << 8) | u16::from(self.0[5])
     }
 
-    /// Gives the piggy-backed MAC ommands associated with the given payload.
-    pub fn fopts(&self) -> MacCommandIterator {
-        let f_opts_len = FCtrl(self.0[4], self.1).f_opts_len();
-        parse_mac_commands(&self.0[7_usize..(7 + f_opts_len) as usize], self.1)
+    pub fn fopts_len(&self) -> u8 {
+        FCtrl(self.0[4], self.1).f_opts_len()
     }
 }
 
@@ -617,15 +615,10 @@ pub enum FRMPayload<'a> {
 
 /// FRMMacCommands represents the mac commands.
 #[derive(Debug, PartialEq, Eq)]
-pub struct FRMMacCommands<'a>(bool, &'a [u8]);
+pub struct FRMMacCommands<'a>(pub(crate) bool, pub(crate) &'a [u8]);
 
 impl<'a> FRMMacCommands<'a> {
     pub fn new(bytes: &'a [u8], uplink: bool) -> Self {
         FRMMacCommands(uplink, bytes)
-    }
-
-    /// Gives the list of mac commands represented in the FRMPayload.
-    pub fn mac_commands(&self) -> MacCommandIterator {
-        parse_mac_commands(self.1, self.0)
     }
 }
