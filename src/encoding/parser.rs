@@ -1,3 +1,5 @@
+use crate::MType;
+
 use super::keys::{CryptoFactory, AES128, MIC};
 //use super::maccommands::{parse_mac_commands, MacCommandIterator};
 use super::securityhelpers;
@@ -255,13 +257,19 @@ pub trait DataHeader {
     /// Gives whether the frame is confirmed
     fn is_confirmed(&self) -> bool {
         let mtype = MHDR(self.as_data_bytes()[0]).mtype();
-        mtype == MType::ConfirmedDataUp || mtype == MType::ConfirmedDataDown
+        match mtype {
+            MType::ConfirmedDataUp | MType::ConfirmedDataDown => true,
+            _ => false,
+        }
     }
 
     /// Gives whether the payload is uplink or not.
     fn is_uplink(&self) -> bool {
         let mtype = MHDR(self.as_data_bytes()[0]).mtype();
-        mtype == MType::UnconfirmedDataUp || mtype == MType::ConfirmedDataUp
+        match mtype {
+            MType::UnconfirmedDataUp | MType::ConfirmedDataUp => true,
+            _ => false,
+        }
     }
 
     /// Gives the FPort of the DataPayload if there is one.
@@ -344,10 +352,6 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> EncryptedDataPayload<T, F> {
         let d = self.0.as_ref();
         securityhelpers::calculate_data_mic(&d[..d.len() - 4], self.1.new_mac(key), fcnt)
     }
-}
-
-fn compute_fcnt(old_fcnt: u32, fcnt: u16) -> u32 {
-    ((old_fcnt >> 16) << 16) ^ u32::from(fcnt)
 }
 
 /// Parses a payload as LoRaWAN physical payload.
@@ -463,19 +467,6 @@ impl From<u8> for MHDR {
     fn from(v: u8) -> Self {
         MHDR(v)
     }
-}
-
-/// MType gives the possible message types of the PhyPayload.
-#[derive(Debug, PartialEq, Eq)]
-pub enum MType {
-    JoinRequest,
-    JoinAccept,
-    UnconfirmedDataUp,
-    UnconfirmedDataDown,
-    ConfirmedDataUp,
-    ConfirmedDataDown,
-    RFU,
-    Proprietary,
 }
 
 /// Major gives the supported LoRaWAN payload formats.

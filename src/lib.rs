@@ -6,14 +6,16 @@
 use channel_mask::ChannelMask;
 use frequency::Frequency;
 
-mod channel_mask;
-mod encoding;
-mod frequency;
-mod mac;
-mod radio;
-mod timer;
-enum Error<PhyError> {
-    Radio(PhyError),
+pub mod channel_mask;
+pub mod device;
+pub mod encoding;
+pub mod frequency;
+pub mod mac;
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum Error {
+    //<RadioError> {
+    Device(device::Error),
     InvalidMic,
     InvalidDevAddr,
     UnableToDecodePayload(&'static str),
@@ -42,10 +44,12 @@ pub enum DR {
     _14 = 14,
     _15 = 15,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CfList {
     DynamicChannel([Frequency; 5]),
     FixedChannel([ChannelMask; 4]),
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MType {
     JoinRequest,
     JoinAccept,
@@ -56,11 +60,13 @@ pub enum MType {
     RFU,
     Proprietary,
 }
-pub(crate) enum Frame {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Frame {
     Join,
     Data,
 }
-pub(crate) enum Window {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Window {
     _1,
     _2,
 }
