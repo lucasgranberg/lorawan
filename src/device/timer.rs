@@ -3,11 +3,9 @@ use core::future::Future;
 pub trait Timer {
     fn reset(&mut self);
 
-    type AtFuture<'m>: Future<Output = ()> + 'm
-    where
-        Self: 'm;
+    type AtFuture: Future<Output = ()>;
 
-    fn at(&mut self, millis: u64) -> Self::AtFuture<'_>;
+    fn at(&mut self, millis: u64) -> Self::AtFuture;
 
     type DelayFuture: Future<Output = ()>;
     /// Delay for millis milliseconds

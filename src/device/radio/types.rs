@@ -66,20 +66,28 @@ pub struct RadioBuffer<const N: usize> {
     packet: [u8; N],
     pos: usize,
 }
+impl<const N: usize> Default for RadioBuffer<N> {
+    fn default() -> Self {
+        Self {
+            packet: [0; N],
+            pos: Default::default(),
+        }
+    }
+}
 
 impl<const N: usize> RadioBuffer<N> {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             packet: [0; N],
             pos: 0,
         }
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.pos = 0;
     }
 
-    pub(crate) fn extend_from_slice(&mut self, buf: &[u8]) -> Result<(), ()> {
+    pub fn extend_from_slice(&mut self, buf: &[u8]) -> Result<(), ()> {
         if self.pos + buf.len() < self.packet.len() {
             self.packet[self.pos..self.pos + buf.len()].copy_from_slice(buf);
             self.pos += buf.len();
@@ -89,11 +97,11 @@ impl<const N: usize> RadioBuffer<N> {
         }
     }
 
-    pub(crate) fn as_raw_slice(&mut self) -> &mut [u8] {
+    pub fn as_raw_slice(&mut self) -> &mut [u8] {
         &mut self.packet
     }
 
-    pub(crate) fn inc(&mut self, len: usize) {
+    pub fn inc(&mut self, len: usize) {
         assert!(self.pos + len < self.packet.len());
         self.pos += len;
     }
