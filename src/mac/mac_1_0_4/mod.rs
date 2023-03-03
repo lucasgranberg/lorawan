@@ -1,26 +1,25 @@
 use core::{future::Future, marker::PhantomData};
 
 use self::encoding::{
-    creator::DataPayloadCreator,
+    creator::{DataPayloadCreator, JoinRequestCreator},
     maccommandcreator::UplinkMacCommandCreator,
     maccommands::DownlinkMacCommand,
     parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
 };
 use crate::{
-    encoding::{
-        default_crypto,
-        keys::{CryptoFactory, AES128},
-        maccommands::{MacCommandIterator, SerializableMacCommand},
-        parser::{
-            parse_with_factory, DataHeader, DevAddr, DevNonce, FCtrl, FRMPayload, PhyPayload,
-        },
-        securityhelpers,
-    },
-    radio::{
+    device::radio::{
         types::{RadioBuffer, RfConfig, TxConfig},
         PhyRxTx,
     },
-    timer::Timer,
+    device::{radio::types::RxQuality, timer::Timer, Device},
+    encoding::{
+        default_crypto::DefaultFactory,
+        keys::{CryptoFactory, AES128},
+        maccommands::{MacCommandIterator, SerializableMacCommand},
+        parser::{
+            parse_with_factory, DataHeader, DevAddr, DevNonce, FCtrl, FRMPayload, PhyPayload, EUI64,
+        },
+    },
     CfList, Error, Frame, Window, DR,
 };
 use futures::{future::select, future::Either, pin_mut};
@@ -28,10 +27,10 @@ use generic_array::{typenum::U256, GenericArray};
 use heapless::Vec;
 use rand_core::RngCore;
 
-use super::{MType, Region, Timings};
+use super::{Region, RxWindows};
 mod encoding;
-mod region;
-struct Session {
+pub mod region;
+pub struct Session {
     newskey: AES128,
     appskey: AES128,
     devaddr: DevAddr<[u8; 4]>,
@@ -87,61 +86,89 @@ impl Session {
         self.fcnt_up += 1;
     }
 }
-struct Credentials {
-    join_eui: [u8; 8],
-    dev_eui: [u8; 8],
-    app_key: AES128,
-    dev_nonce: u16,
+pub struct Credentials {
+    pub app_eui: [u8; 8],
+    pub dev_eui: [u8; 8],
+    pub app_key: AES128,
+    pub dev_nonce: u16,
 }
-struct Status {
+#[derive(Default)]
+pub struct Status {
     tx_dr: Option<DR>,
     rx_data_rates: Option<(DR, DR)>,
     cf_list: Option<CfList>,
     confirm_next: bool,
 }
-struct Mac<'a, R, C, T, P, RNG: RngCore, const N: usize = 256> {
+pub struct Mac<'a, R, D>
+where
+    R: Region,
+    D: Device,
+{
     credentials: &'a mut Credentials,
     session: &'a mut Option<Session>,
     status: &'a mut Status,
-    timer: T,
-    rng: RNG,
     region: PhantomData<R>,
-    crypto: PhantomData<C>,
-    radio: PhantomData<P>,
+    device: PhantomData<D>,
     cmds: Vec<UplinkMacCommandCreator, 15>,
 }
-impl<'a, R, C, T, P, RNG> Mac<'a, R, C, T, P, RNG>
+impl<'a, R, D> Mac<'a, R, D>
 where
-    C: CryptoFactory + Default,
-    T: Timer,
-    P: crate::radio::PhyRxTx,
-    RNG: RngCore,
+    R: Region,
+    D: Device,
 {
-    fn create_join_request(&mut self, radio_buffer: &mut RadioBuffer<256>) {
-        radio_buffer.clear();
-        let buf = radio_buffer.as_mut();
-        buf[0] = MType::JoinRequest as u8;
-        buf[1..9].copy_from_slice(self.credentials.join_eui.as_slice());
-        buf[9..17].copy_from_slice(self.credentials.dev_eui.as_slice());
-        buf[17..19].copy_from_slice(self.credentials.dev_nonce.to_le_bytes().as_slice());
+    pub fn new(
+        credentials: &'a mut Credentials,
+        session: &'a mut Option<Session>,
+        status: &'a mut Status,
+    ) -> Self {
+        Self {
+            credentials,
+            session,
+            status,
+            region: PhantomData::default(),
+            device: PhantomData::default(),
+            cmds: Vec::new(),
+        }
+    }
+    // fn create_join_request(&mut self, radio_buffer: &mut RadioBuffer<256>) {
+    //     radio_buffer.clear();
+    //     let buf = radio_buffer.as_mut();
+    //     buf[0] = MType::JoinRequest as u8;
+    //     buf[1..9].copy_from_slice(self.credentials.join_eui.as_slice());
+    //     buf[9..17].copy_from_slice(self.credentials.dev_eui.as_slice());
+    //     buf[17..19].copy_from_slice(self.credentials.dev_nonce.to_le_bytes().as_slice());
 
-        let len = buf.len();
-        let mic = securityhelpers::calculate_mic(
-            &buf[..len - 4],
-            default_crypto::DefaultFactory.new_mac(&self.credentials.app_key),
-        );
-        buf[len - 4..].copy_from_slice(&mic.0[..]);
+    //     let len = buf.len();
+    //     let mic = securityhelpers::calculate_mic(
+    //         &buf[..len - 4],
+    //         default_crypto::DefaultFactory.new_mac(&self.credentials.app_key),
+    //     );
+    //     buf[len - 4..].copy_from_slice(&mic.0[..]);
+    // }
+    pub(crate) fn create_join_request<const N: usize>(&self, buf: &mut RadioBuffer<N>) {
+        buf.clear();
+
+        let mut phy: JoinRequestCreator<[u8; 23], DefaultFactory> = JoinRequestCreator::default();
+
+        let devnonce = self.credentials.dev_nonce;
+
+        phy.set_app_eui(EUI64::new(self.credentials.app_eui).unwrap())
+            .set_dev_eui(EUI64::new(self.credentials.dev_eui).unwrap())
+            .set_dev_nonce(&devnonce.to_le_bytes());
+        let vec = phy.build(&self.credentials.app_key).unwrap();
+
+        buf.extend_from_slice(vec).unwrap();
     }
 
-    fn get_timings(&self, frame: Frame) -> super::Timings {
+    fn get_rx_windows(&self, frame: Frame) -> super::RxWindows {
         match frame {
-            Frame::Join => Timings {
+            Frame::Join => RxWindows {
                 rx1_open: 1000,
                 rx1_close: 1900,
                 rx2_open: 2000,
                 rx2_close: 2900,
             },
-            Frame::Data => Timings {
+            Frame::Data => RxWindows {
                 rx1_open: 1000,
                 rx1_close: 1900,
                 rx2_open: 2000,
@@ -149,68 +176,100 @@ where
             },
         }
     }
-
-    fn create_rf_config(&self) -> RfConfig {
-        todo!()
+    fn get_tx_pwr(&self) -> i8 {
+        R::max_eirp()
     }
-    fn create_tx_config(&self, frame: &Frame) -> TxConfig {
-        todo!()
+
+    fn create_rf_config(&self, frame: Frame, device: &mut D) -> RfConfig {
+        match frame {
+            Frame::Join => R::create_rf_config(frame, device.rng().next_u32(), None),
+            Frame::Data => todo!(),
+        }
+    }
+    fn create_tx_config(&self, frame: Frame, device: &mut D) -> TxConfig {
+        TxConfig {
+            pw: self.get_tx_pwr(),
+            rf: self.create_rf_config(frame, device),
+        }
     }
     fn handle_downlink_macs<'b>(&mut self, cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>) {
-        todo!()
+        for cmd in cmds {
+            match cmd {
+                DownlinkMacCommand::LinkCheckAns(_) => todo!(),
+                DownlinkMacCommand::LinkADRReq(_) => todo!(),
+                DownlinkMacCommand::DutyCycleReq(_) => todo!(),
+                DownlinkMacCommand::RXParamSetupReq(_) => todo!(),
+                DownlinkMacCommand::DevStatusReq(_) => todo!(),
+                DownlinkMacCommand::NewChannelReq(_) => todo!(),
+                DownlinkMacCommand::RXTimingSetupReq(_) => todo!(),
+                DownlinkMacCommand::TXParamSetupReq(_) => todo!(),
+                DownlinkMacCommand::DlChannelReq(_) => todo!(),
+                DownlinkMacCommand::DeviceTimeAns(_) => todo!(),
+            }
+        }
     }
-    fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error<P::PhyError>> {
+    fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error> {
         self.cmds.push(cmd).map_err(|_| Error::FOptsFull)
     }
 
     async fn rx_with_timeout<'m>(
         &mut self,
         frame: Frame,
-        radio: &mut P,
+        device: &mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
-    ) -> Result<usize, Error<P::PhyError>> {
-        let timings = self.get_timings(frame);
+    ) -> Result<Option<(usize, RxQuality)>, <<D as Device>::PhyRxTx as PhyRxTx>::PhyError> {
+        let windows = self.get_rx_windows(frame);
         let mut window = Window::_1;
 
         radio_buffer.clear();
 
         loop {
-            let rf_config = self.create_rf_config();
-            self.timer.at(timings.get_open(&window) as u64).await;
-            let timeout_fut = self.timer.at(timings.get_close(&window) as u64);
-            let rx_fut = radio.rx(rf_config, radio_buffer.as_mut());
+            let rf_config = self.create_rf_config(frame, device);
+            device.timer().reset();
+            device.timer().at(windows.get_open(&window) as u64).await;
+            let timeout_fut = device.timer().at(windows.get_close(&window) as u64);
+            let rx_fut = device.radio().rx(rf_config, radio_buffer.as_mut());
             pin_mut!(rx_fut);
             pin_mut!(timeout_fut);
+
             // Wait until either RX is complete or if we've reached window close
             match select(rx_fut, timeout_fut).await {
                 // RX is complete!
                 Either::Left((r, close_at)) => match r {
-                    Ok((sz, _q)) => {
-                        return Ok(sz);
+                    Ok(ret) => {
+                        return Ok(Some(ret));
                     }
                     // Ignore errors or timeouts and wait until the RX2 window is ready.
-                    _ => close_at.await,
+                    Err(e) => {
+                        if let Window::_1 = window {
+                            window = Window::_2;
+                            close_at.await
+                        } else {
+                            return Err(e);
+                        }
+                    }
                 },
                 // Timeout! Jumpt to next window.
-                Either::Right(_) => (),
-            }
-
-            if let Window::_1 = window {
-                window = Window::_2;
-            } else {
-                break;
+                Either::Right(_) => {
+                    if let Window::_1 = window {
+                        window = Window::_2;
+                    } else {
+                        break;
+                    }
+                }
             }
         }
-        todo!()
+        Ok(None)
     }
 
-    fn prepare_buffer(
+    fn prepare_buffer<C: CryptoFactory>(
         &mut self,
         data: &[u8],
         fport: u8,
         confirmed: bool,
         radio_buffer: &mut RadioBuffer<256>,
-    ) -> Result<u32, Error<P::PhyError>> {
+        factory: C,
+    ) -> Result<u32, Error> {
         if let Some(session) = self.session {
             // check if FCnt is used up
             if session.fcnt_up() == (0xFFFF + 1) {
@@ -219,7 +278,7 @@ where
             }
             let fcnt = session.fcnt_up();
             let mut phy: DataPayloadCreator<GenericArray<u8, U256>, C> =
-                DataPayloadCreator::default();
+                DataPayloadCreator::new(GenericArray::default(), factory);
 
             let mut fctrl = FCtrl(0x0, true);
             if self.status.confirm_next {
@@ -254,41 +313,37 @@ where
     }
 }
 
-impl<'a, R, P, C, T, RNG> crate::mac::Mac<R, P, T> for Mac<'a, R, C, T, P, RNG>
+impl<'a, R, D> crate::mac::Mac<R, D> for Mac<'a, R, D>
 where
     R: Region,
-    P: PhyRxTx,
-    C: CryptoFactory + Default,
-    T: Timer,
-    RNG: RngCore,
+    D: Device,
 {
-    type Error = Error<P::PhyError>;
-    type JoinFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm where Self: 'm, P: 'm;
+    type Error = Error;
+    type JoinFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm where Self: 'm;
 
     fn join<'m>(
         &'m mut self,
-        radio: &'m mut P,
+        device: &'m mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
     ) -> Self::JoinFuture<'m> {
         self.create_join_request(radio_buffer);
 
-        let tx_config = R::create_tx_config(
-            MType::JoinRequest,
-            self.status.tx_dr.unwrap_or(R::get_default_datarate()),
-        );
+        let tx_config = self.create_tx_config(Frame::Join, device);
         async move {
             // Transmit the join payload
-            let _ms = radio
+            let _ms = device
+                .radio()
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
-                .map_err(Error::Radio)?;
-            self.timer.reset();
+                .map_err(|e| Error::Device(crate::device::Error::Radio))?;
+            //device.timer().reset();
 
             // Receive join response within RX window
-            self.rx_with_timeout(Frame::Join, radio, radio_buffer)
-                .await?;
+            self.rx_with_timeout(Frame::Join, device, radio_buffer)
+                .await
+                .map_err(|e| Self::Error::Device(crate::device::Error::Radio))?;
 
-            match parse_with_factory(radio_buffer.as_mut(), C::default()) {
+            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory) {
                 Ok(PhyPayload::JoinAccept(encrypted)) => {
                     let decrypt = DecryptedJoinAcceptPayload::new_from_encrypted(
                         encrypted,
@@ -313,10 +368,10 @@ where
         }
     }
 
-    type SendFuture<'m> = impl Future<Output = Result<usize, Self::Error>> + 'm where Self: 'm, P: 'm;
+    type SendFuture<'m> = impl Future<Output = Result<usize, Self::Error>> + 'm where Self: 'm, D: 'm;
     fn send<'m>(
         &'m mut self,
-        radio: &'m mut P,
+        device: &'m mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
         data: &'m [u8],
         fport: u8,
@@ -329,25 +384,27 @@ where
             }
             //self.mac.handle_uplink_macs(macs);
             // Prepare transmission buffer
-            let _ = self.prepare_buffer(data, fport, confirmed, radio_buffer)?;
+            let _ = self.prepare_buffer(data, fport, confirmed, radio_buffer, DefaultFactory)?;
 
             // Send data
-            let tx_config = self.create_tx_config(&Frame::Data);
+            let tx_config = self.create_tx_config(Frame::Data, device);
             // Transmit our data packet
-            let _ms = radio
+            let _ms = device
+                .radio()
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
-                .map_err(Error::Radio)?;
+                .map_err(|e| Error::Device(crate::device::Error::Radio))?;
 
             // Wait for received data within window
-            self.timer.reset();
-            self.rx_with_timeout(Frame::Data, radio, radio_buffer)
-                .await?;
+            device.timer().reset();
+            self.rx_with_timeout(Frame::Data, device, radio_buffer)
+                .await
+                .map_err(|e| Error::Device(crate::device::Error::Radio))?;
 
             // Handle received data
             if let Some(ref mut session_data) = self.session {
                 // Parse payload and copy into user bufer is provided
-                let res = parse_with_factory(radio_buffer.as_mut(), C::default());
+                let res = parse_with_factory(radio_buffer.as_mut(), DefaultFactory);
                 match res {
                     Ok(PhyPayload::Data(encrypted_data)) => {
                         if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {

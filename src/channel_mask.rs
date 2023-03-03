@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelMask([u8; 2]);
 
 impl ChannelMask {

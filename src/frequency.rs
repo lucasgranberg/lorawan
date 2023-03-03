@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frequency([u8; 3]);
 
 impl Frequency {

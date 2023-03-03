@@ -47,7 +47,7 @@ pub struct JoinAcceptCreator<D, F> {
 }
 
 #[cfg(feature = "with-downlink")]
-impl<D: AsMut<[u8]>, F: CryptoFactory + Default> JoinAcceptCreator<D, F> {
+impl<D: AsMut<[u8]>, F: CryptoFactory> JoinAcceptCreator<D, F> {
     /// Creates a well initialized JoinAcceptCreator with specific data and crypto functions.
     ///
     /// TODO: Add more detials & and example
@@ -322,7 +322,6 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
 ///     .set_fcnt(76543);
 /// phy.build(b"hello lora", &[], &nwk_skey, &app_skey).unwrap();
 /// ```
-#[derive(Default)]
 pub struct DataPayloadCreator<D, F> {
     data: D,
     data_f_port: Option<u8>,
@@ -330,7 +329,15 @@ pub struct DataPayloadCreator<D, F> {
     factory: F,
 }
 
-impl<D: AsMut<[u8]>, F: CryptoFactory + Default> DataPayloadCreator<D, F> {
+impl<D: AsMut<[u8]>, F: CryptoFactory> DataPayloadCreator<D, F> {
+    pub fn new(data: D, factory: F) -> Self {
+        DataPayloadCreator {
+            data,
+            data_f_port: None,
+            fcnt: 0,
+            factory,
+        }
+    }
     /// Creates a well initialized DataPayloadCreator with specific crypto functions.
     ///
     /// By default the packet is unconfirmed data up packet.
@@ -340,12 +347,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory + Default> DataPayloadCreator<D, F> {
             return Err("data slice is too short");
         }
         d[0] = 0x40;
-        Ok(DataPayloadCreator {
-            data,
-            data_f_port: None,
-            fcnt: 0,
-            factory,
-        })
+        Ok(Self::new(data, factory))
     }
 
     /// Sets whether the packet is uplink or downlink.
