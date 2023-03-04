@@ -206,12 +206,15 @@ where
     }
     fn handle_downlink_macs<'b>(
         &mut self,
+        device: &mut D,
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>,
     ) -> Result<(), Error> {
         self.cmds.clear();
         for cmd in cmds {
             match cmd {
-                DownlinkMacCommand::LinkCheckAns(_) => todo!(),
+                DownlinkMacCommand::LinkCheckAns(payload) => {
+                    device.handle_link_check(payload.gateway_count(), payload.margin())
+                }
                 DownlinkMacCommand::LinkADRReq(payload) => {
                     let mut ans = LinkADRAnsCreator::new();
                     let new_tx_power =
@@ -277,7 +280,9 @@ where
                 DownlinkMacCommand::RXTimingSetupReq(_) => todo!(),
                 DownlinkMacCommand::TXParamSetupReq(_) => todo!(),
                 DownlinkMacCommand::DlChannelReq(_) => todo!(),
-                DownlinkMacCommand::DeviceTimeAns(_) => todo!(),
+                DownlinkMacCommand::DeviceTimeAns(payload) => {
+                    device.handle_device_time(payload.seconds(), payload.nano_seconds());
+                }
             }
         }
         Ok(())
@@ -507,14 +512,14 @@ where
                                 .unwrap();
 
                                 self.cmds.clear(); //clear cmd buffer
-                                self.handle_downlink_macs((&decrypted.fhdr()).into());
+                                self.handle_downlink_macs(device, (&decrypted.fhdr()).into())?;
 
                                 if confirmed {
                                     self.status.confirm_next = true;
                                 }
                                 match decrypted.frm_payload() {
                                     Ok(FRMPayload::MACCommands(mac_cmds)) => {
-                                        self.handle_downlink_macs((&mac_cmds).into());
+                                        self.handle_downlink_macs(device, (&mac_cmds).into())?;
                                         Ok(0)
                                     }
                                     Ok(FRMPayload::Data(rx_data)) => {

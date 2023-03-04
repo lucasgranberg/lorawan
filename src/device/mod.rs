@@ -14,6 +14,12 @@ pub trait Device {
     fn rng(&mut self) -> &mut Self::Rng;
     fn max_tx_power(&self) -> i8;
     fn min_tx_power(&self) -> i8;
+    fn handle_device_time(&mut self, _seconds: u32, _nano_seconds: u32) {
+        // default do nothing
+    }
+    fn handle_link_check(&mut self, _gateway_count: u8, _margin: u8) {
+        // default do nothing
+    }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
