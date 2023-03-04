@@ -23,5 +23,13 @@ impl crate::mac::Region for Eu868 {
             }
         }
     }
+
+    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, ()> {
+        match tx_power {
+            0..=7 => Ok(Some(max_eirp - (tx_power * 2) as i8)),
+            15 => Ok(cur_dbm),
+            _ => Err(()),
+        }
+    }
 }
 impl super::Region for Eu868 {}

@@ -12,6 +12,8 @@ pub trait Device {
     fn timer(&mut self) -> &mut Self::Timer;
     fn radio(&mut self) -> &mut Self::PhyRxTx;
     fn rng(&mut self) -> &mut Self::Rng;
+    fn max_tx_power(&self) -> i8;
+    fn min_tx_power(&self) -> i8;
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

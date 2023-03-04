@@ -54,6 +54,8 @@ pub trait Region {
     fn max_eirp() -> i8 {
         14
     }
+    /// Convert tx power to dbm
+    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, ()>;
 
     fn create_rf_config(
         frame: Frame,

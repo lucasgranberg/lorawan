@@ -2,11 +2,12 @@ use core::{future::Future, marker::PhantomData};
 
 use self::encoding::{
     creator::{DataPayloadCreator, JoinRequestCreator},
-    maccommandcreator::UplinkMacCommandCreator,
+    maccommandcreator::*,
     maccommands::DownlinkMacCommand,
     parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
 };
 use crate::{
+    channel_mask::ChannelMask,
     device::radio::{
         types::{RadioBuffer, RfConfig, TxConfig},
         PhyRxTx,
@@ -15,6 +16,10 @@ use crate::{
     encoding::{
         default_crypto::DefaultFactory,
         keys::{CryptoFactory, AES128},
+        maccommandcreator::{
+            DevStatusAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator, NewChannelAnsCreator,
+            RXParamSetupAnsCreator,
+        },
         maccommands::{MacCommandIterator, SerializableMacCommand},
         parser::{
             parse_with_factory, DataHeader, DevAddr, DevNonce, FCtrl, FRMPayload, PhyPayload, EUI64,
@@ -92,12 +97,33 @@ pub struct Credentials {
     pub app_key: AES128,
     pub dev_nonce: u16,
 }
-#[derive(Default)]
 pub struct Status {
-    tx_dr: Option<DR>,
-    rx_data_rates: Option<(DR, DR)>,
-    cf_list: Option<CfList>,
-    confirm_next: bool,
+    pub(crate) tx_data_rate: Option<DR>,
+    pub(crate) cf_list: Option<CfList>,
+    pub(crate) confirm_next: bool,
+    pub(crate) channel_mask: ChannelMask,
+    pub(crate) tx_power: Option<i8>,
+    pub(crate) max_duty_cycle: f32,
+    pub(crate) rx1_dr_offset: Option<u8>,
+    pub(crate) rx2_data_rate: Option<u8>,
+    pub(crate) rx_quality: Option<RxQuality>,
+    pub(crate) battery_level: Option<f32>,
+}
+impl Default for Status {
+    fn default() -> Self {
+        Status {
+            tx_data_rate: None,
+            cf_list: None,
+            confirm_next: false,
+            channel_mask: ChannelMask::new_from_raw(&[0xFF, 0xFF]),
+            tx_power: None,
+            max_duty_cycle: 0.0,
+            rx1_dr_offset: None,
+            rx2_data_rate: None,
+            rx_quality: None,
+            battery_level: None,
+        }
+    }
 }
 pub struct Mac<'a, R, D>
 where
@@ -130,21 +156,7 @@ where
             cmds: Vec::new(),
         }
     }
-    // fn create_join_request(&mut self, radio_buffer: &mut RadioBuffer<256>) {
-    //     radio_buffer.clear();
-    //     let buf = radio_buffer.as_mut();
-    //     buf[0] = MType::JoinRequest as u8;
-    //     buf[1..9].copy_from_slice(self.credentials.join_eui.as_slice());
-    //     buf[9..17].copy_from_slice(self.credentials.dev_eui.as_slice());
-    //     buf[17..19].copy_from_slice(self.credentials.dev_nonce.to_le_bytes().as_slice());
 
-    //     let len = buf.len();
-    //     let mic = securityhelpers::calculate_mic(
-    //         &buf[..len - 4],
-    //         default_crypto::DefaultFactory.new_mac(&self.credentials.app_key),
-    //     );
-    //     buf[len - 4..].copy_from_slice(&mic.0[..]);
-    // }
     pub(crate) fn create_join_request<const N: usize>(&self, buf: &mut RadioBuffer<N>) {
         buf.clear();
 
@@ -192,14 +204,75 @@ where
             rf: self.create_rf_config(frame, device),
         }
     }
-    fn handle_downlink_macs<'b>(&mut self, cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>) {
+    fn handle_downlink_macs<'b>(
+        &mut self,
+        cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>,
+    ) -> Result<(), Error> {
+        self.cmds.clear();
         for cmd in cmds {
             match cmd {
                 DownlinkMacCommand::LinkCheckAns(_) => todo!(),
-                DownlinkMacCommand::LinkADRReq(_) => todo!(),
-                DownlinkMacCommand::DutyCycleReq(_) => todo!(),
-                DownlinkMacCommand::RXParamSetupReq(_) => todo!(),
-                DownlinkMacCommand::DevStatusReq(_) => todo!(),
+                DownlinkMacCommand::LinkADRReq(payload) => {
+                    let mut ans = LinkADRAnsCreator::new();
+                    let new_tx_power =
+                        R::modify_dbm(payload.tx_power(), self.status.tx_power, R::max_eirp());
+                    let new_data_rate = match payload.data_rate() {
+                        0 => Ok(Some(DR::_0)),
+                        1 => Ok(Some(DR::_1)),
+                        2 => Ok(Some(DR::_2)),
+                        3 => Ok(Some(DR::_3)),
+                        4 => Ok(Some(DR::_4)),
+                        5 => Ok(Some(DR::_5)),
+                        6 => Ok(Some(DR::_6)),
+                        7 => Ok(Some(DR::_7)),
+                        8 => Ok(Some(DR::_8)),
+                        9 => Ok(Some(DR::_9)),
+                        10 => Ok(Some(DR::_10)),
+                        11 => Ok(Some(DR::_11)),
+                        12 => Ok(Some(DR::_12)),
+                        13 => Ok(Some(DR::_13)),
+                        14 => Ok(Some(DR::_14)),
+                        //The value 0xF (decimal 15) of either DataRate or TXPower means that the end-device SHALL ignore that field and keep the current parameter values.
+                        //15 => Ok(Some(DR::_15)),
+                        15 => Ok(self.status.tx_data_rate),
+                        _ => Err(()),
+                    };
+                    ans.set_tx_power_ack(new_tx_power.is_ok());
+                    ans.set_data_rate_ack(new_data_rate.is_ok());
+                    ans.set_channel_mask_ack(true);
+                    if new_tx_power.is_ok() && new_data_rate.is_ok() {
+                        self.status.tx_power = new_tx_power.unwrap();
+                        self.status.tx_data_rate = new_data_rate.unwrap();
+                        self.status.channel_mask = payload.channel_mask();
+                    }
+                    self.add_uplink_cmd(UplinkMacCommandCreator::LinkADRAns(ans))?;
+                }
+                DownlinkMacCommand::DutyCycleReq(payload) => {
+                    self.status.max_duty_cycle = payload.max_duty_cycle();
+                    self.add_uplink_cmd(UplinkMacCommandCreator::DutyCycleAns(
+                        DutyCycleAnsCreator::new(),
+                    ))?;
+                }
+                DownlinkMacCommand::RXParamSetupReq(payload) => {
+                    let mut ans = RXParamSetupAnsCreator::new();
+                    self.status.rx1_dr_offset = Some(payload.dl_settings().rx1_dr_offset());
+                    self.status.rx2_data_rate = Some(payload.dl_settings().rx2_data_rate());
+                    ans.set_rx1_data_rate_offset_ack(true);
+                    ans.set_rx2_data_rate_ack(true);
+                    self.add_uplink_cmd(UplinkMacCommandCreator::RXParamSetupAns(ans))?;
+                }
+                DownlinkMacCommand::DevStatusReq(_) => {
+                    let mut ans = DevStatusAnsCreator::new();
+                    match self.status.battery_level {
+                        Some(battery_level) => ans.set_battery((battery_level * 253.0) as u8 + 1),
+                        None => ans.set_battery(255),
+                    };
+                    match self.status.rx_quality {
+                        Some(rx_quality) => ans.set_margin(rx_quality.snr()).unwrap(),
+                        None => ans.set_margin(0).unwrap(),
+                    };
+                    self.add_uplink_cmd(UplinkMacCommandCreator::DevStatusAns(ans))?;
+                }
                 DownlinkMacCommand::NewChannelReq(_) => todo!(),
                 DownlinkMacCommand::RXTimingSetupReq(_) => todo!(),
                 DownlinkMacCommand::TXParamSetupReq(_) => todo!(),
@@ -207,6 +280,7 @@ where
                 DownlinkMacCommand::DeviceTimeAns(_) => todo!(),
             }
         }
+        Ok(())
     }
     fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error> {
         self.cmds.push(cmd).map_err(|_| Error::FOptsFull)
@@ -397,10 +471,13 @@ where
 
             // Wait for received data within window
             device.timer().reset();
-            self.rx_with_timeout(Frame::Data, device, radio_buffer)
+            let rx_res = self
+                .rx_with_timeout(Frame::Data, device, radio_buffer)
                 .await
                 .map_err(|e| Error::Device(crate::device::Error::Radio))?;
-
+            if let Some((_len, rx_quality)) = rx_res {
+                self.status.rx_quality = Some(rx_quality);
+            }
             // Handle received data
             if let Some(ref mut session_data) = self.session {
                 // Parse payload and copy into user bufer is provided

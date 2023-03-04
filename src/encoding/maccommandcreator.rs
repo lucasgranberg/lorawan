@@ -1,3 +1,5 @@
+use crate::channel_mask::ChannelMask;
+
 use super::maccommands::*;
 
 macro_rules! impl_mac_cmd_creator_boilerplate {
