@@ -18,7 +18,7 @@ use crate::{
         keys::{CryptoFactory, AES128},
         maccommandcreator::{
             DevStatusAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator, NewChannelAnsCreator,
-            RXParamSetupAnsCreator,
+            RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
         },
         maccommands::{MacCommandIterator, SerializableMacCommand},
         parser::{
@@ -103,6 +103,7 @@ pub struct Status {
     pub(crate) confirm_next: bool,
     pub(crate) channel_mask: ChannelMask,
     pub(crate) tx_power: Option<i8>,
+    pub(crate) rx1_delay: Option<u8>,
     pub(crate) max_duty_cycle: f32,
     pub(crate) rx1_dr_offset: Option<u8>,
     pub(crate) rx2_data_rate: Option<u8>,
@@ -119,6 +120,7 @@ impl Default for Status {
             tx_power: None,
             max_duty_cycle: 0.0,
             rx1_dr_offset: None,
+            rx1_delay: None,
             rx2_data_rate: None,
             rx_quality: None,
             battery_level: None,
@@ -277,9 +279,18 @@ where
                     self.add_uplink_cmd(UplinkMacCommandCreator::DevStatusAns(ans))?;
                 }
                 DownlinkMacCommand::NewChannelReq(_) => todo!(),
-                DownlinkMacCommand::RXTimingSetupReq(_) => todo!(),
-                DownlinkMacCommand::TXParamSetupReq(_) => todo!(),
                 DownlinkMacCommand::DlChannelReq(_) => todo!(),
+                DownlinkMacCommand::RXTimingSetupReq(payload) => {
+                    self.status.rx1_delay = Some(payload.delay());
+                    self.add_uplink_cmd(UplinkMacCommandCreator::RXTimingSetupAns(
+                        RXTimingSetupAnsCreator::new(),
+                    ))?;
+                }
+                DownlinkMacCommand::TXParamSetupReq(_) => {
+                    if R::supports_tx_param_setup() {
+                        todo!()
+                    }
+                }
                 DownlinkMacCommand::DeviceTimeAns(payload) => {
                     device.handle_device_time(payload.seconds(), payload.nano_seconds());
                 }

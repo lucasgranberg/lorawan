@@ -54,6 +54,9 @@ pub trait Region {
     fn max_eirp() -> i8 {
         14
     }
+    fn supports_tx_param_setup() -> bool {
+        false
+    }
     /// Convert tx power to dbm
     fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, ()>;
 
