@@ -703,8 +703,35 @@ pub struct DlChannelReqCreator {
 }
 impl_mac_cmd_creator_boilerplate!(DlChannelReqCreator, 0x0A, 4);
 #[derive(Debug, PartialEq, Eq)]
-pub struct DlChannelAnsCreator;
-impl_mac_cmd_creator_boilerplate!(DlChannelAnsCreator, 0x0A);
+pub struct DlChannelAnsCreator {
+    data: [u8; 2],
+}
+impl_mac_cmd_creator_boilerplate!(DlChannelAnsCreator, 0x0A, 2);
+impl DlChannelAnsCreator {
+    /// Sets the channel frequency acknowledgement of the NewChannelAns to the provided value.
+    ///
+    /// # Argument
+    ///
+    /// * ack - true meaning that the channel frequency was acceptable or false otherwise.
+    pub fn set_channel_frequency_ack(&mut self, ack: bool) -> &mut Self {
+        self.data[1] &= 0xfe;
+        self.data[1] |= ack as u8;
+
+        self
+    }
+
+    /// Sets the data rate range acknowledgement of the NewChannelAns to the provided value.
+    ///
+    /// # Argument
+    ///
+    /// * ack - true meaning that the data rate range was acceptable or false otherwise.
+    pub fn set_uplink_frequency_exists_ack(&mut self, ack: bool) -> &mut Self {
+        self.data[1] &= 0xfd;
+        self.data[1] |= (ack as u8) << 1;
+
+        self
+    }
+}
 #[derive(Debug, PartialEq, Eq)]
 pub struct DeviceTimeReqCreator;
 impl_mac_cmd_creator_boilerplate!(DeviceTimeReqCreator, 0x0D);

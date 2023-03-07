@@ -1,16 +1,60 @@
-use crate::{device::radio::types::RfConfig, Frame, DR};
+use core::marker::PhantomData;
+
+use crate::{
+    device::radio::types::{CodingRate, RfConfig},
+    Frame, DR,
+};
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 mod datarates;
 use datarates::*;
 
-pub struct Eu868 {}
-impl crate::mac::Region for Eu868 {
+use super::channel_plan::ChannelPlan;
+
+pub struct Eu868<C>
+where
+    C: ChannelPlan,
+{
+    channel_plan: PhantomData<C>,
+}
+impl<C> crate::mac::Region for Eu868<C>
+where
+    C: ChannelPlan,
+{
+    fn default_channels() -> u8 {
+        3
+    }
+    fn min_frequency() -> u32 {
+        863000000
+    }
+    fn max_frequency() -> u32 {
+        870000000
+    }
+
+    fn min_data_rate() -> DR {
+        DR::_0
+    }
+
+    fn max_data_rate() -> DR {
+        DR::_7
+    }
+    fn default_data_rate() -> DR {
+        DR::_0
+    }
+    fn default_coding_rate() -> CodingRate {
+        CodingRate::_4_5
+    }
+    fn max_eirp() -> i8 {
+        14
+    }
+    fn supports_tx_param_setup() -> bool {
+        false
+    }
     fn create_rf_config(frame: Frame, random: u32, data_rate: Option<DR>) -> RfConfig {
         match frame {
             Frame::Join => {
                 let channel = random as usize % JOIN_CHANNELS.len();
-                let data_rate = &DATARATES[data_rate.unwrap_or(Self::default_datarate()) as usize];
+                let data_rate = &DATARATES[data_rate.unwrap_or(Self::default_data_rate()) as usize];
                 RfConfig {
                     frequency: JOIN_CHANNELS[channel],
                     bandwidth: data_rate.bandwidth.clone(),
@@ -32,4 +76,3 @@ impl crate::mac::Region for Eu868 {
         }
     }
 }
-impl super::Region for Eu868 {}

@@ -45,18 +45,15 @@ where
 }
 
 pub trait Region {
-    fn default_datarate() -> DR {
-        DR::_0
-    }
-    fn default_coding_rate() -> CodingRate {
-        CodingRate::_4_5
-    }
-    fn max_eirp() -> i8 {
-        14
-    }
-    fn supports_tx_param_setup() -> bool {
-        false
-    }
+    fn default_channels() -> u8;
+    fn default_data_rate() -> DR;
+    fn default_coding_rate() -> CodingRate;
+    fn max_eirp() -> i8;
+    fn min_frequency() -> u32;
+    fn max_frequency() -> u32;
+    fn min_data_rate() -> DR;
+    fn max_data_rate() -> DR;
+    fn supports_tx_param_setup() -> bool;
     /// Convert tx power to dbm
     fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, ()>;
 

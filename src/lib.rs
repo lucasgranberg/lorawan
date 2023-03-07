@@ -22,10 +22,11 @@ pub enum Error {
     NetworkNotJoined,
     SessionExpired,
     FOptsFull,
-    UnableToPreparePayload,
+    UnableToPreparePayload(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum DR {
     _0 = 0,
     _1 = 1,
@@ -43,6 +44,32 @@ pub enum DR {
     _13 = 13,
     _14 = 14,
     _15 = 15,
+}
+
+impl TryFrom<u8> for DR {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(DR::_0),
+            1 => Ok(DR::_1),
+            2 => Ok(DR::_2),
+            3 => Ok(DR::_3),
+            4 => Ok(DR::_4),
+            5 => Ok(DR::_5),
+            6 => Ok(DR::_6),
+            7 => Ok(DR::_7),
+            8 => Ok(DR::_8),
+            9 => Ok(DR::_9),
+            10 => Ok(DR::_10),
+            11 => Ok(DR::_11),
+            12 => Ok(DR::_12),
+            13 => Ok(DR::_13),
+            14 => Ok(DR::_14),
+            15 => Ok(DR::_15),
+            _ => Err(()),
+        }
+    }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CfList {

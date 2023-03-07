@@ -1,10 +1,18 @@
-use core::{future::Future, marker::PhantomData};
+use core::{
+    cmp::{max, min},
+    future::Future,
+    marker::PhantomData,
+    ops::RangeBounds,
+};
 
-use self::encoding::{
-    creator::{DataPayloadCreator, JoinRequestCreator},
-    maccommandcreator::*,
-    maccommands::DownlinkMacCommand,
-    parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
+use self::{
+    encoding::{
+        creator::{DataPayloadCreator, JoinRequestCreator},
+        maccommandcreator::*,
+        maccommands::DownlinkMacCommand,
+        parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
+    },
+    region::channel_plan::{Channel, ChannelPlan},
 };
 use crate::{
     channel_mask::ChannelMask,
@@ -17,15 +25,15 @@ use crate::{
         default_crypto::DefaultFactory,
         keys::{CryptoFactory, AES128},
         maccommandcreator::{
-            DevStatusAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator, NewChannelAnsCreator,
-            RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
+            DevStatusAnsCreator, DlChannelAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator,
+            NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
         },
         maccommands::{MacCommandIterator, SerializableMacCommand},
         parser::{
             parse_with_factory, DataHeader, DevAddr, DevNonce, FCtrl, FRMPayload, PhyPayload, EUI64,
         },
     },
-    CfList, Error, Frame, Window, DR,
+    Error, Frame, Window, DR,
 };
 use futures::{future::select, future::Either, pin_mut};
 use generic_array::{typenum::U256, GenericArray};
@@ -97,24 +105,29 @@ pub struct Credentials {
     pub app_key: AES128,
     pub dev_nonce: u16,
 }
-pub struct Status {
-    pub(crate) tx_data_rate: Option<DR>,
-    pub(crate) cf_list: Option<CfList>,
+pub struct Status<C>
+where
+    C: ChannelPlan + Default,
+{
     pub(crate) confirm_next: bool,
     pub(crate) channel_mask: ChannelMask,
-    pub(crate) tx_power: Option<i8>,
-    pub(crate) rx1_delay: Option<u8>,
     pub(crate) max_duty_cycle: f32,
+    pub(crate) tx_power: Option<i8>,
+    pub(crate) tx_data_rate: Option<DR>,
     pub(crate) rx1_dr_offset: Option<u8>,
+    pub(crate) rx1_delay: Option<u8>,
     pub(crate) rx2_data_rate: Option<u8>,
     pub(crate) rx_quality: Option<RxQuality>,
     pub(crate) battery_level: Option<f32>,
+    pub(crate) channel_plan: C,
 }
-impl Default for Status {
+impl<C> Default for Status<C>
+where
+    C: ChannelPlan + Default,
+{
     fn default() -> Self {
         Status {
             tx_data_rate: None,
-            cf_list: None,
             confirm_next: false,
             channel_mask: ChannelMask::new_from_raw(&[0xFF, 0xFF]),
             tx_power: None,
@@ -124,30 +137,33 @@ impl Default for Status {
             rx2_data_rate: None,
             rx_quality: None,
             battery_level: None,
+            channel_plan: Default::default(),
         }
     }
 }
-pub struct Mac<'a, R, D>
+pub struct Mac<'a, R, D, C>
 where
     R: Region,
     D: Device,
+    C: ChannelPlan + Default,
 {
     credentials: &'a mut Credentials,
     session: &'a mut Option<Session>,
-    status: &'a mut Status,
+    status: &'a mut Status<C>,
     region: PhantomData<R>,
     device: PhantomData<D>,
     cmds: Vec<UplinkMacCommandCreator, 15>,
 }
-impl<'a, R, D> Mac<'a, R, D>
+impl<'a, R, D, C> Mac<'a, R, D, C>
 where
-    R: Region,
+    R: region::Region<C>,
     D: Device,
+    C: ChannelPlan + Default,
 {
     pub fn new(
         credentials: &'a mut Credentials,
         session: &'a mut Option<Session>,
-        status: &'a mut Status,
+        status: &'a mut Status<C>,
     ) -> Self {
         Self {
             credentials,
@@ -206,6 +222,36 @@ where
             rf: self.create_rf_config(frame, device),
         }
     }
+    fn max_data_rate(&self) -> DR {
+        match D::max_data_rate() {
+            Some(device_max_data_rate) => min(device_max_data_rate as u8, R::max_data_rate() as u8)
+                .try_into()
+                .unwrap(),
+            None => R::max_data_rate(),
+        }
+    }
+    fn min_data_rate(&self) -> DR {
+        match D::min_data_rate() {
+            Some(device_min_data_rate) => max(device_min_data_rate as u8, R::min_data_rate() as u8)
+                .try_into()
+                .unwrap(),
+            None => R::max_data_rate(),
+        }
+    }
+    fn max_frequency(&self) -> u32 {
+        match D::max_frequency() {
+            Some(device_max_frequency) => min(device_max_frequency, R::max_frequency())
+                .try_into()
+                .unwrap(),
+            None => R::max_frequency(),
+        }
+    }
+    fn min_frequency(&self) -> u32 {
+        match D::min_frequency() {
+            Some(device_min_frequency) => max(device_min_frequency, R::min_frequency()),
+            None => R::min_frequency(),
+        }
+    }
     fn handle_downlink_macs<'b>(
         &mut self,
         device: &mut D,
@@ -213,34 +259,19 @@ where
     ) -> Result<(), Error> {
         self.cmds.clear();
         for cmd in cmds {
-            match cmd {
+            let res: Option<UplinkMacCommandCreator> = match cmd {
                 DownlinkMacCommand::LinkCheckAns(payload) => {
-                    device.handle_link_check(payload.gateway_count(), payload.margin())
+                    device.handle_link_check(payload.gateway_count(), payload.margin());
+                    None
                 }
                 DownlinkMacCommand::LinkADRReq(payload) => {
                     let mut ans = LinkADRAnsCreator::new();
                     let new_tx_power =
                         R::modify_dbm(payload.tx_power(), self.status.tx_power, R::max_eirp());
-                    let new_data_rate = match payload.data_rate() {
-                        0 => Ok(Some(DR::_0)),
-                        1 => Ok(Some(DR::_1)),
-                        2 => Ok(Some(DR::_2)),
-                        3 => Ok(Some(DR::_3)),
-                        4 => Ok(Some(DR::_4)),
-                        5 => Ok(Some(DR::_5)),
-                        6 => Ok(Some(DR::_6)),
-                        7 => Ok(Some(DR::_7)),
-                        8 => Ok(Some(DR::_8)),
-                        9 => Ok(Some(DR::_9)),
-                        10 => Ok(Some(DR::_10)),
-                        11 => Ok(Some(DR::_11)),
-                        12 => Ok(Some(DR::_12)),
-                        13 => Ok(Some(DR::_13)),
-                        14 => Ok(Some(DR::_14)),
-                        //The value 0xF (decimal 15) of either DataRate or TXPower means that the end-device SHALL ignore that field and keep the current parameter values.
-                        //15 => Ok(Some(DR::_15)),
-                        15 => Ok(self.status.tx_data_rate),
-                        _ => Err(()),
+                    let new_data_rate: Result<Option<DR>, ()> = if payload.data_rate() == 0xF {
+                        Ok(self.status.tx_data_rate)
+                    } else {
+                        DR::try_from(payload.data_rate()).map(|dr| Some(dr))
                     };
                     ans.set_tx_power_ack(new_tx_power.is_ok());
                     ans.set_data_rate_ack(new_data_rate.is_ok());
@@ -250,13 +281,13 @@ where
                         self.status.tx_data_rate = new_data_rate.unwrap();
                         self.status.channel_mask = payload.channel_mask();
                     }
-                    self.add_uplink_cmd(UplinkMacCommandCreator::LinkADRAns(ans))?;
+                    Some(UplinkMacCommandCreator::LinkADRAns(ans))
                 }
                 DownlinkMacCommand::DutyCycleReq(payload) => {
                     self.status.max_duty_cycle = payload.max_duty_cycle();
-                    self.add_uplink_cmd(UplinkMacCommandCreator::DutyCycleAns(
+                    Some(UplinkMacCommandCreator::DutyCycleAns(
                         DutyCycleAnsCreator::new(),
-                    ))?;
+                    ))
                 }
                 DownlinkMacCommand::RXParamSetupReq(payload) => {
                     let mut ans = RXParamSetupAnsCreator::new();
@@ -264,7 +295,7 @@ where
                     self.status.rx2_data_rate = Some(payload.dl_settings().rx2_data_rate());
                     ans.set_rx1_data_rate_offset_ack(true);
                     ans.set_rx2_data_rate_ack(true);
-                    self.add_uplink_cmd(UplinkMacCommandCreator::RXParamSetupAns(ans))?;
+                    Some(UplinkMacCommandCreator::RXParamSetupAns(ans))
                 }
                 DownlinkMacCommand::DevStatusReq(_) => {
                     let mut ans = DevStatusAnsCreator::new();
@@ -276,24 +307,93 @@ where
                         Some(rx_quality) => ans.set_margin(rx_quality.snr()).unwrap(),
                         None => ans.set_margin(0).unwrap(),
                     };
-                    self.add_uplink_cmd(UplinkMacCommandCreator::DevStatusAns(ans))?;
+                    Some(UplinkMacCommandCreator::DevStatusAns(ans))
                 }
-                DownlinkMacCommand::NewChannelReq(_) => todo!(),
-                DownlinkMacCommand::DlChannelReq(_) => todo!(),
+                DownlinkMacCommand::NewChannelReq(payload) => {
+                    if payload.channel_index() < R::default_channels() {
+                        None //silently ignore if default channel
+                    } else {
+                        let data_rate_range =
+                            self.min_data_rate() as u8..self.max_data_rate() as u8;
+                        let data_rate_range_ack = data_rate_range
+                            .contains(&payload.data_rate_range().min_data_range())
+                            && data_rate_range.contains(&payload.data_rate_range().max_data_rate());
+
+                        let frequency_range = self.min_frequency()..self.max_frequency();
+                        let channel_frequency_ack = frequency_range
+                            .contains(&payload.frequency().value())
+                            || payload.frequency().value() == 0;
+
+                        let mut ans = NewChannelAnsCreator::new();
+                        ans.set_channel_frequency_ack(channel_frequency_ack);
+                        ans.set_data_rate_range_ack(data_rate_range_ack);
+                        if data_rate_range_ack && channel_frequency_ack {
+                            let channel_res = self
+                                .status
+                                .channel_plan
+                                .get_mut_channel(payload.channel_index() as usize);
+                            if let Some(channel) = channel_res {
+                                *channel = Some(Channel {
+                                    frequency: payload.frequency().value(),
+                                    max_data_rate: payload.data_rate_range().max_data_rate(),
+                                    min_data_rate: payload.data_rate_range().min_data_range(),
+                                    dl_frequency: None,
+                                });
+                                Some(UplinkMacCommandCreator::NewChannelAns(ans))
+                            } else {
+                                None
+                            }
+                        } else {
+                            Some(UplinkMacCommandCreator::NewChannelAns(ans))
+                        }
+                    }
+                }
+                DownlinkMacCommand::DlChannelReq(payload) => {
+                    let mut ans = DlChannelAnsCreator::new();
+                    let frequency_range = self.min_frequency()..self.max_frequency();
+                    let channel_frequency_ack =
+                        frequency_range.contains(&payload.frequency().value());
+                    let channel_res = self
+                        .status
+                        .channel_plan
+                        .get_mut_channel(payload.channel_index() as usize);
+                    if let Some(channel) = channel_res {
+                        if channel_frequency_ack {
+                            ans.set_channel_frequency_ack(true);
+                            if let Some(channel) = channel {
+                                channel.dl_frequency = Some(payload.frequency().value());
+                                ans.set_uplink_frequency_exists_ack(true);
+                            } else {
+                                ans.set_uplink_frequency_exists_ack(false);
+                            }
+                        } else {
+                            ans.set_uplink_frequency_exists_ack(false);
+                        }
+                        Some(UplinkMacCommandCreator::DlChannelAns(ans))
+                    } else {
+                        None
+                    }
+                }
                 DownlinkMacCommand::RXTimingSetupReq(payload) => {
                     self.status.rx1_delay = Some(payload.delay());
-                    self.add_uplink_cmd(UplinkMacCommandCreator::RXTimingSetupAns(
+                    Some(UplinkMacCommandCreator::RXTimingSetupAns(
                         RXTimingSetupAnsCreator::new(),
-                    ))?;
+                    ))
                 }
                 DownlinkMacCommand::TXParamSetupReq(_) => {
                     if R::supports_tx_param_setup() {
                         todo!()
+                    } else {
+                        None
                     }
                 }
                 DownlinkMacCommand::DeviceTimeAns(payload) => {
                     device.handle_device_time(payload.seconds(), payload.nano_seconds());
+                    None
                 }
+            };
+            if let Some(uplink_cmd) = res {
+                self.add_uplink_cmd(uplink_cmd)?
             }
         }
         Ok(())
@@ -352,13 +452,13 @@ where
         Ok(None)
     }
 
-    fn prepare_buffer<C: CryptoFactory>(
+    fn prepare_buffer<CRYPTO: CryptoFactory>(
         &mut self,
         data: &[u8],
         fport: u8,
         confirmed: bool,
         radio_buffer: &mut RadioBuffer<256>,
-        factory: C,
+        factory: CRYPTO,
     ) -> Result<u32, Error> {
         if let Some(session) = self.session {
             // check if FCnt is used up
@@ -367,7 +467,7 @@ where
                 return Err(Error::SessionExpired);
             }
             let fcnt = session.fcnt_up();
-            let mut phy: DataPayloadCreator<GenericArray<u8, U256>, C> =
+            let mut phy: DataPayloadCreator<GenericArray<u8, U256>, CRYPTO> =
                 DataPayloadCreator::new(GenericArray::default(), factory);
 
             let mut fctrl = FCtrl(0x0, true);
@@ -395,7 +495,7 @@ where
                     radio_buffer.extend_from_slice(packet).unwrap();
                     Ok(fcnt)
                 }
-                Err(e) => Err(Error::UnableToPreparePayload),
+                Err(e) => Err(Error::UnableToPreparePayload(e)),
             }
         } else {
             Err(Error::NetworkNotJoined)
@@ -403,10 +503,11 @@ where
     }
 }
 
-impl<'a, R, D> crate::mac::Mac<R, D> for Mac<'a, R, D>
+impl<'a, R, D, C> crate::mac::Mac<R, D> for Mac<'a, R, D, C>
 where
-    R: Region,
+    R: region::Region<C>,
     D: Device,
+    C: ChannelPlan + Default + 'a,
 {
     type Error = Error;
     type JoinFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm where Self: 'm;
