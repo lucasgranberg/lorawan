@@ -20,7 +20,11 @@ use crate::{
         types::{RadioBuffer, RfConfig, TxConfig},
         PhyRxTx,
     },
-    device::{radio::types::RxQuality, timer::Timer, Device},
+    device::{
+        radio::types::{CodingRate, RxQuality},
+        timer::Timer,
+        Device,
+    },
     encoding::{
         default_crypto::DefaultFactory,
         keys::{CryptoFactory, AES128},
@@ -114,9 +118,9 @@ where
     pub(crate) max_duty_cycle: f32,
     pub(crate) tx_power: Option<i8>,
     pub(crate) tx_data_rate: Option<DR>,
-    pub(crate) rx1_dr_offset: Option<u8>,
+    pub(crate) rx1_data_rate_offset: Option<DR>,
     pub(crate) rx1_delay: Option<u8>,
-    pub(crate) rx2_data_rate: Option<u8>,
+    pub(crate) rx2_data_rate: Option<DR>,
     pub(crate) rx_quality: Option<RxQuality>,
     pub(crate) battery_level: Option<f32>,
     pub(crate) channel_plan: C,
@@ -132,7 +136,7 @@ where
             channel_mask: ChannelMask::new_from_raw(&[0xFF, 0xFF]),
             tx_power: None,
             max_duty_cycle: 0.0,
-            rx1_dr_offset: None,
+            rx1_data_rate_offset: None,
             rx1_delay: None,
             rx2_data_rate: None,
             rx_quality: None,
@@ -206,22 +210,23 @@ where
             },
         }
     }
-    fn get_tx_pwr(&self) -> i8 {
-        R::max_eirp()
+    fn get_tx_pwr(&self, frame: Frame) -> i8 {
+        //R::max_eirp()
+        todo!()
     }
 
-    fn create_rf_config(&self, frame: Frame, device: &mut D) -> RfConfig {
-        match frame {
-            Frame::Join => R::create_rf_config(frame, device.rng().next_u32(), None),
-            Frame::Data => todo!(),
-        }
-    }
-    fn create_tx_config(&self, frame: Frame, device: &mut D) -> TxConfig {
-        TxConfig {
-            pw: self.get_tx_pwr(),
-            rf: self.create_rf_config(frame, device),
-        }
-    }
+    // fn create_rf_config(&self, frame: Frame, device: &mut D) -> RfConfig {
+    //     match frame {
+    //         Frame::Join => R::create_rf_config(frame, device.rng().next_u32(), None),
+    //         Frame::Data => todo!(),
+    //     }
+    // }
+    // fn create_tx_config(&self, frame: Frame, device: &mut D) -> TxConfig {
+    //     TxConfig {
+    //         pw: self.get_tx_pwr(),
+    //         rf: self.create_rf_config(frame, device),
+    //     }
+    // }
     fn max_data_rate(&self) -> DR {
         match D::max_data_rate() {
             Some(device_max_data_rate) => min(device_max_data_rate as u8, R::max_data_rate() as u8)
@@ -252,6 +257,61 @@ where
             None => R::min_frequency(),
         }
     }
+    fn create_tx_config(&self, frame: Frame, data_rate: DR, channel: &Channel) -> TxConfig {
+        let pw = self.get_tx_pwr(frame);
+        match frame {
+            Frame::Join => TxConfig {
+                pw,
+                rf: RfConfig {
+                    frequency: channel.frequency,
+                    coding_rate: CodingRate::_4_5,
+                    data_rate: R::convert_data_rate(data_rate),
+                },
+            },
+            Frame::Data => TxConfig {
+                pw,
+                rf: RfConfig {
+                    frequency: channel.frequency,
+                    coding_rate: CodingRate::_4_5,
+                    data_rate: R::convert_data_rate(data_rate),
+                },
+            },
+        }
+    }
+    fn create_rf_config(
+        &self,
+        frame: &Frame,
+        window: &Window,
+        data_rate: DR,
+        channel: &Channel,
+    ) -> RfConfig {
+        match (frame, window) {
+            (Frame::Join, Window::_1) => RfConfig {
+                frequency: channel.frequency,
+                coding_rate: CodingRate::_4_5,
+                data_rate: R::convert_data_rate(data_rate),
+            },
+            (Frame::Join, Window::_2) => RfConfig {
+                frequency: channel.frequency,
+                coding_rate: CodingRate::_4_5,
+                data_rate: R::convert_data_rate(data_rate),
+            },
+            (Frame::Data, Window::_1) => RfConfig {
+                frequency: channel.frequency,
+                coding_rate: CodingRate::_4_5,
+                data_rate: R::convert_data_rate(data_rate),
+            },
+            (Frame::Data, Window::_2) => RfConfig {
+                frequency: R::default_rx2_frequency(),
+                coding_rate: CodingRate::_4_5,
+                data_rate: R::convert_data_rate(
+                    self.status
+                        .rx2_data_rate
+                        .unwrap_or(R::default_rx2_data_rate()),
+                ),
+            },
+        }
+    }
     fn handle_downlink_macs<'b>(
         &mut self,
         device: &mut D,
@@ -262,6 +322,10 @@ where
             let res: Option<UplinkMacCommandCreator> = match cmd {
                 DownlinkMacCommand::LinkCheckAns(payload) => {
                     device.handle_link_check(payload.gateway_count(), payload.margin());
+                    None
+                }
+                DownlinkMacCommand::DeviceTimeAns(payload) => {
+                    device.handle_device_time(payload.seconds(), payload.nano_seconds());
                     None
                 }
                 DownlinkMacCommand::LinkADRReq(payload) => {
@@ -291,10 +355,31 @@ where
                 }
                 DownlinkMacCommand::RXParamSetupReq(payload) => {
                     let mut ans = RXParamSetupAnsCreator::new();
-                    self.status.rx1_dr_offset = Some(payload.dl_settings().rx1_dr_offset());
-                    self.status.rx2_data_rate = Some(payload.dl_settings().rx2_data_rate());
-                    ans.set_rx1_data_rate_offset_ack(true);
-                    ans.set_rx2_data_rate_ack(true);
+                    let rx1_data_rate_offset_res: Result<DR, _> =
+                        payload.dl_settings().rx1_dr_offset().try_into();
+                    let mut rx1_data_rate_offset_ack = false;
+                    if let Ok(rx1_dr_offset) = rx1_data_rate_offset_res {
+                        if rx1_dr_offset as u8 <= 5 {
+                            rx1_data_rate_offset_ack = true;
+                        }
+                    }
+
+                    let rx2_data_rate_res: Result<DR, _> =
+                        payload.dl_settings().rx2_data_rate().try_into();
+                    let mut rx2_data_rate_ack = false;
+                    if let Ok(rx2_data_rate) = rx2_data_rate_res {
+                        if ((self.min_data_rate() as u8)..(self.max_data_rate() as u8))
+                            .contains(&(rx2_data_rate as u8))
+                        {
+                            rx2_data_rate_ack = true;
+                        }
+                    }
+                    ans.set_rx1_data_rate_offset_ack(rx1_data_rate_offset_ack);
+                    ans.set_rx2_data_rate_ack(rx2_data_rate_ack);
+                    if rx1_data_rate_offset_ack && rx2_data_rate_ack {
+                        self.status.rx1_data_rate_offset = Some(rx1_data_rate_offset_res.unwrap());
+                        self.status.rx2_data_rate = Some(rx2_data_rate_res.unwrap());
+                    }
                     Some(UplinkMacCommandCreator::RXParamSetupAns(ans))
                 }
                 DownlinkMacCommand::DevStatusReq(_) => {
@@ -387,10 +472,6 @@ where
                         None
                     }
                 }
-                DownlinkMacCommand::DeviceTimeAns(payload) => {
-                    device.handle_device_time(payload.seconds(), payload.nano_seconds());
-                    None
-                }
             };
             if let Some(uplink_cmd) = res {
                 self.add_uplink_cmd(uplink_cmd)?
@@ -403,10 +484,12 @@ where
     }
 
     async fn rx_with_timeout<'m>(
-        &mut self,
+        &self,
         frame: Frame,
         device: &mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
+        data_rate: DR,
+        channel: &Channel,
     ) -> Result<Option<(usize, RxQuality)>, <<D as Device>::PhyRxTx as PhyRxTx>::PhyError> {
         let windows = self.get_rx_windows(frame);
         let mut window = Window::_1;
@@ -414,7 +497,7 @@ where
         radio_buffer.clear();
 
         loop {
-            let rf_config = self.create_rf_config(frame, device);
+            let rf_config = self.create_rf_config(&frame, &window, data_rate, channel);
             device.timer().reset();
             device.timer().at(windows.get_open(&window) as u64).await;
             let timeout_fut = device.timer().at(windows.get_close(&window) as u64);
@@ -519,8 +602,15 @@ where
     ) -> Self::JoinFuture<'m> {
         self.create_join_request(radio_buffer);
 
-        let tx_config = self.create_tx_config(Frame::Join, device);
         async move {
+            let random = device.rng().next_u32();
+            let channel = self
+                .status
+                .channel_plan
+                .get_random_channel(random, DR::_0)
+                .map_err(|_| Error::NoValidChannelFound)?;
+
+            let tx_config = self.create_tx_config(Frame::Join, R::default_data_rate(), &channel);
             // Transmit the join payload
             let _ms = device
                 .radio()
@@ -530,7 +620,7 @@ where
             //device.timer().reset();
 
             // Receive join response within RX window
-            self.rx_with_timeout(Frame::Join, device, radio_buffer)
+            self.rx_with_timeout(Frame::Join, device, radio_buffer, DR::_0, &channel)
                 .await
                 .map_err(|e| Self::Error::Device(crate::device::Error::Radio))?;
 
@@ -573,12 +663,19 @@ where
             if self.session.is_none() {
                 return Err(Error::NetworkNotJoined);
             }
+            let random = device.rng().next_u32();
+            let data_rate = self.status.tx_data_rate.unwrap_or(R::default_data_rate());
+            let channel = self
+                .status
+                .channel_plan
+                .get_random_channel(random, data_rate)
+                .map_err(|_| Error::NoValidChannelFound)?;
             //self.mac.handle_uplink_macs(macs);
             // Prepare transmission buffer
             let _ = self.prepare_buffer(data, fport, confirmed, radio_buffer, DefaultFactory)?;
 
             // Send data
-            let tx_config = self.create_tx_config(Frame::Data, device);
+            let tx_config = self.create_tx_config(Frame::Data, data_rate, &channel);
             // Transmit our data packet
             let _ms = device
                 .radio()
@@ -589,7 +686,7 @@ where
             // Wait for received data within window
             device.timer().reset();
             let rx_res = self
-                .rx_with_timeout(Frame::Data, device, radio_buffer)
+                .rx_with_timeout(Frame::Data, device, radio_buffer, data_rate, &channel)
                 .await
                 .map_err(|e| Error::Device(crate::device::Error::Radio))?;
             if let Some((_len, rx_quality)) = rx_res {

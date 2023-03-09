@@ -30,11 +30,15 @@ pub enum CodingRate {
 #[derive(Debug)]
 pub struct RfConfig {
     pub frequency: u32,
+    pub coding_rate: CodingRate,
+    pub data_rate: Datarate,
+}
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone)]
+pub struct Datarate {
     pub bandwidth: Bandwidth,
     pub spreading_factor: SpreadingFactor,
-    pub coding_rate: CodingRate,
 }
-
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
 pub struct TxConfig {

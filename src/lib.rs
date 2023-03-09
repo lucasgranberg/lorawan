@@ -23,6 +23,7 @@ pub enum Error {
     SessionExpired,
     FOptsFull,
     UnableToPreparePayload(&'static str),
+    NoValidChannelFound,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
