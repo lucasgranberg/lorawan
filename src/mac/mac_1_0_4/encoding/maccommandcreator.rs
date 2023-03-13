@@ -14,17 +14,3 @@ mac_cmds_creator_enum! {
         DeviceTimeReq
     }
 }
-mac_cmds_creator_enum! {
-    pub enum DownlinkMacCommandCreator {
-        LinkCheckAns
-        LinkADRReq
-        DutyCycleReq
-        RXParamSetupReq
-        DevStatusReq
-        NewChannelReq
-        RXTimingSetupReq
-        TXParamSetupReq
-        DlChannelReq
-        DeviceTimeAns
-    }
-}

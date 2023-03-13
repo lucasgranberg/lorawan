@@ -2,7 +2,6 @@ use core::{
     cmp::{max, min},
     future::Future,
     marker::PhantomData,
-    ops::RangeBounds,
 };
 
 use self::{
@@ -12,7 +11,7 @@ use self::{
         maccommands::DownlinkMacCommand,
         parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
     },
-    region::channel_plan::{Channel, ChannelPlan},
+    region::channel_plan::{ChannelPlan, DynamicChannel},
 };
 use crate::{
     channel_mask::ChannelMask,
@@ -31,6 +30,7 @@ use crate::{
         maccommandcreator::{
             DevStatusAnsCreator, DlChannelAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator,
             NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
+            TXParamSetupAnsCreator,
         },
         maccommands::{MacCommandIterator, SerializableMacCommand},
         parser::{
@@ -114,7 +114,6 @@ where
     C: ChannelPlan + Default,
 {
     pub(crate) confirm_next: bool,
-    pub(crate) channel_mask: ChannelMask,
     pub(crate) max_duty_cycle: f32,
     pub(crate) tx_power: Option<i8>,
     pub(crate) tx_data_rate: Option<DR>,
@@ -133,7 +132,6 @@ where
         Status {
             tx_data_rate: None,
             confirm_next: false,
-            channel_mask: ChannelMask::new_from_raw(&[0xFF, 0xFF]),
             tx_power: None,
             max_duty_cycle: 0.0,
             rx1_data_rate_offset: None,
@@ -210,23 +208,15 @@ where
             },
         }
     }
-    fn get_tx_pwr(&self, frame: Frame) -> i8 {
-        //R::max_eirp()
-        todo!()
+    fn get_max_eirp(&self) -> i8 {
+        min(R::max_eirp(), D::max_eirp())
     }
-
-    // fn create_rf_config(&self, frame: Frame, device: &mut D) -> RfConfig {
-    //     match frame {
-    //         Frame::Join => R::create_rf_config(frame, device.rng().next_u32(), None),
-    //         Frame::Data => todo!(),
-    //     }
-    // }
-    // fn create_tx_config(&self, frame: Frame, device: &mut D) -> TxConfig {
-    //     TxConfig {
-    //         pw: self.get_tx_pwr(),
-    //         rf: self.create_rf_config(frame, device),
-    //     }
-    // }
+    fn get_tx_pwr(&self, frame: Frame) -> i8 {
+        match frame {
+            Frame::Join => self.get_max_eirp(),
+            Frame::Data => self.status.tx_power.unwrap_or(R::max_eirp()),
+        }
+    }
     fn max_data_rate(&self) -> DR {
         match D::max_data_rate() {
             Some(device_max_data_rate) => min(device_max_data_rate as u8, R::max_data_rate() as u8)
@@ -257,7 +247,7 @@ where
             None => R::min_frequency(),
         }
     }
-    fn create_tx_config(&self, frame: Frame, data_rate: DR, channel: &Channel) -> TxConfig {
+    fn create_tx_config(&self, frame: Frame, data_rate: DR, channel: &DynamicChannel) -> TxConfig {
         let pw = self.get_tx_pwr(frame);
         match frame {
             Frame::Join => TxConfig {
@@ -283,7 +273,7 @@ where
         frame: &Frame,
         window: &Window,
         data_rate: DR,
-        channel: &Channel,
+        channel: &DynamicChannel,
     ) -> RfConfig {
         match (frame, window) {
             (Frame::Join, Window::_1) => RfConfig {
@@ -343,7 +333,9 @@ where
                     if new_tx_power.is_ok() && new_data_rate.is_ok() {
                         self.status.tx_power = new_tx_power.unwrap();
                         self.status.tx_data_rate = new_data_rate.unwrap();
-                        self.status.channel_mask = payload.channel_mask();
+                        self.status
+                            .channel_plan
+                            .handle_channel_mask(payload.channel_mask());
                     }
                     Some(UplinkMacCommandCreator::LinkADRAns(ans))
                 }
@@ -418,7 +410,8 @@ where
                                 .channel_plan
                                 .get_mut_channel(payload.channel_index() as usize);
                             if let Some(channel) = channel_res {
-                                *channel = Some(Channel {
+                                *channel = Some(DynamicChannel {
+                                    enabled: true,
                                     frequency: payload.frequency().value(),
                                     max_data_rate: payload.data_rate_range().max_data_rate(),
                                     min_data_rate: payload.data_rate_range().min_data_range(),
@@ -467,7 +460,9 @@ where
                 }
                 DownlinkMacCommand::TXParamSetupReq(_) => {
                     if R::supports_tx_param_setup() {
-                        todo!()
+                        let ans = TXParamSetupAnsCreator::new();
+                        let _ret = Some(UplinkMacCommandCreator::TXParamSetupAns(ans));
+                        todo!();
                     } else {
                         None
                     }
@@ -489,7 +484,7 @@ where
         device: &mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
         data_rate: DR,
-        channel: &Channel,
+        channel: &DynamicChannel,
     ) -> Result<Option<(usize, RxQuality)>, <<D as Device>::PhyRxTx as PhyRxTx>::PhyError> {
         let windows = self.get_rx_windows(frame);
         let mut window = Window::_1;
@@ -554,6 +549,7 @@ where
                 DataPayloadCreator::new(GenericArray::default(), factory);
 
             let mut fctrl = FCtrl(0x0, true);
+
             if self.status.confirm_next {
                 fctrl.set_ack();
                 self.status.confirm_next = false;

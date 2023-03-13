@@ -560,6 +560,14 @@ impl FCtrl {
         self.0 |= 0b1 << 5;
     }
 
+    pub fn set_adr_ack_req(&mut self) {
+        self.0 |= 0b1 << 6;
+    }
+
+    pub fn set_adr(&mut self) {
+        self.0 |= 0b1 << 7;
+    }
+
     pub fn new(bytes: u8, uplink: bool) -> FCtrl {
         FCtrl(bytes, uplink)
     }

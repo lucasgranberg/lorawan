@@ -14,7 +14,7 @@ pub trait Device {
     fn timer(&mut self) -> &mut Self::Timer;
     fn radio(&mut self) -> &mut Self::PhyRxTx;
     fn rng(&mut self) -> &mut Self::Rng;
-    fn max_eirp(&self) -> i8;
+    fn max_eirp() -> i8;
     fn handle_device_time(&mut self, _seconds: u32, _nano_seconds: u32) {
         // default do nothing
     }
@@ -34,6 +34,7 @@ pub trait Device {
     fn max_data_rate() -> Option<DR> {
         None
     }
+    fn adaptive_data_rate_enabled() -> bool;
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

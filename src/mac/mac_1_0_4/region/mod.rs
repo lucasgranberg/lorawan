@@ -1,9 +1,6 @@
-use crate::{
-    device::radio::types::{Bandwidth, SpreadingFactor},
-    encoding::{
-        maccommandcreator::{DlChannelAnsCreator, NewChannelAnsCreator},
-        maccommands::{DlChannelReqPayload, NewChannelReqPayload},
-    },
+use crate::encoding::{
+    maccommandcreator::{DlChannelAnsCreator, NewChannelAnsCreator},
+    maccommands::{DlChannelReqPayload, NewChannelReqPayload},
 };
 
 use self::channel_plan::ChannelPlan;
