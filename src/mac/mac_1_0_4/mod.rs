@@ -311,9 +311,9 @@ where
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>,
     ) -> Result<(), Error> {
         self.cmds.clear();
-        let mut last_link_adr_req: Option<LinkADRReqPayload> = None;
         let mut channel_mask = self.status.channel_plan.get_channel_mask();
-        for cmd in cmds {
+        let mut cmd_iter = cmds.into_iter().peekable();
+        while let Some(cmd) = cmd_iter.next() {
             let res: Option<UplinkMacCommandCreator> = match cmd {
                 DownlinkMacCommand::LinkCheckAns(payload) => {
                     device.handle_link_check(payload.gateway_count(), payload.margin());
@@ -324,16 +324,47 @@ where
                     None
                 }
                 DownlinkMacCommand::LinkADRReq(payload) => {
-                    self.status
-                        .channel_plan
-                        .handle_channel_mask(
-                            &mut channel_mask,
-                            payload.channel_mask(),
-                            payload.redundancy().channel_mask_control(),
-                        )
-                        .unwrap();
-                    last_link_adr_req = Some(payload);
-                    None
+                    let mut ans = LinkADRAnsCreator::new();
+                    let new_tx_power =
+                        R::modify_dbm(payload.tx_power(), self.status.tx_power, R::max_eirp());
+                    let new_data_rate: Result<Option<DR>, ()> = if payload.data_rate() == 0xF {
+                        Ok(self.status.tx_data_rate)
+                    } else {
+                        DR::try_from(payload.data_rate()).map(|dr| Some(dr))
+                    };
+                    ans.set_tx_power_ack(new_tx_power.is_ok());
+                    ans.set_data_rate_ack(new_data_rate.is_ok());
+
+                    let channel_mask_res = self.status.channel_plan.handle_channel_mask(
+                        &mut channel_mask,
+                        payload.channel_mask(),
+                        payload.redundancy().channel_mask_control(),
+                    );
+                    ans.set_channel_mask_ack(channel_mask_res.is_ok());
+                    // check if next command is also a LinkADRReq, if not process the atomic block
+                    match cmd_iter.peek() {
+                        Some(DownlinkMacCommand::LinkADRReq(_)) => (),
+                        _ => {
+                            if new_tx_power.is_ok()
+                                && new_data_rate.is_ok()
+                                && channel_mask_res.is_ok()
+                            {
+                                if let Ok(_) =
+                                    self.status.channel_plan.set_channel_mask(channel_mask)
+                                {
+                                    self.status.tx_power = new_tx_power.unwrap();
+                                    self.status.tx_data_rate = new_data_rate.unwrap();
+                                    ans.set_channel_mask_ack(true);
+                                } else {
+                                    ans.set_channel_mask_ack(false);
+                                }
+                            }
+                            //reset channel mask to match actual status
+                            channel_mask = self.status.channel_plan.get_channel_mask();
+                        }
+                    }
+
+                    Some(UplinkMacCommandCreator::LinkADRAns(ans))
                 }
                 DownlinkMacCommand::DutyCycleReq(payload) => {
                     self.status.max_duty_cycle = payload.max_duty_cycle();
@@ -449,35 +480,6 @@ where
             if let Some(uplink_cmd) = res {
                 self.add_uplink_cmd(uplink_cmd)?
             }
-        }
-
-        if let Some(last_link_adr_req) = last_link_adr_req {
-            let mut ans = LinkADRAnsCreator::new();
-            let new_tx_power = R::modify_dbm(
-                last_link_adr_req.tx_power(),
-                self.status.tx_power,
-                R::max_eirp(),
-            );
-            let new_data_rate: Result<Option<DR>, ()> = if last_link_adr_req.data_rate() == 0xF {
-                Ok(self.status.tx_data_rate)
-            } else {
-                DR::try_from(last_link_adr_req.data_rate()).map(|dr| Some(dr))
-            };
-            ans.set_tx_power_ack(new_tx_power.is_ok());
-            ans.set_data_rate_ack(new_data_rate.is_ok());
-            ans.set_channel_mask_ack(true);
-            if new_tx_power.is_ok() && new_data_rate.is_ok() {
-                self.status.tx_power = new_tx_power.unwrap();
-                self.status.tx_data_rate = new_data_rate.unwrap();
-                if let Ok(_) = self.status.channel_plan.set_channel_mask(channel_mask) {
-                    self.status.tx_power = new_tx_power.unwrap();
-                    self.status.tx_data_rate = new_data_rate.unwrap();
-                    ans.set_channel_mask_ack(true);
-                } else {
-                    ans.set_channel_mask_ack(false);
-                }
-            }
-            self.add_uplink_cmd(UplinkMacCommandCreator::LinkADRAns(ans))?;
         }
         Ok(())
     }

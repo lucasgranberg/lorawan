@@ -94,6 +94,7 @@ macro_rules! mac_cmds_enum {
         )*
     }
     ) => {
+        #[derive(Debug, PartialEq)]
         $outer_vis enum $outer_type$(<$outer_lifetime>)* {
             $(
                 $name($type$(<$lifetime>)*),
