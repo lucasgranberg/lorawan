@@ -11,10 +11,10 @@ use self::{
         maccommands::DownlinkMacCommand,
         parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
     },
-    region::channel_plan::{ChannelPlan, DynamicChannel},
+    region::channel_plan::{Channel, ChannelPlan, DynamicChannel},
 };
 use crate::{
-    channel_mask::ChannelMask,
+    channel_mask::{self, ChannelMask},
     device::radio::{
         types::{RadioBuffer, RfConfig, TxConfig},
         PhyRxTx,
@@ -32,7 +32,7 @@ use crate::{
             NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
             TXParamSetupAnsCreator,
         },
-        maccommands::{MacCommandIterator, SerializableMacCommand},
+        maccommands::{LinkADRReqPayload, MacCommandIterator, SerializableMacCommand},
         parser::{
             parse_with_factory, DataHeader, DevAddr, DevNonce, FCtrl, FRMPayload, PhyPayload, EUI64,
         },
@@ -111,7 +111,7 @@ pub struct Credentials {
 }
 pub struct Status<C>
 where
-    C: ChannelPlan + Default,
+    C: ChannelPlan + Default + Copy,
 {
     pub(crate) confirm_next: bool,
     pub(crate) max_duty_cycle: f32,
@@ -126,7 +126,7 @@ where
 }
 impl<C> Default for Status<C>
 where
-    C: ChannelPlan + Default,
+    C: ChannelPlan + Default + Copy,
 {
     fn default() -> Self {
         Status {
@@ -147,7 +147,7 @@ pub struct Mac<'a, R, D, C>
 where
     R: Region,
     D: Device,
-    C: ChannelPlan + Default,
+    C: ChannelPlan + Default + Copy,
 {
     credentials: &'a mut Credentials,
     session: &'a mut Option<Session>,
@@ -160,7 +160,7 @@ impl<'a, R, D, C> Mac<'a, R, D, C>
 where
     R: region::Region<C>,
     D: Device,
-    C: ChannelPlan + Default,
+    C: ChannelPlan + Default + Copy,
 {
     pub fn new(
         credentials: &'a mut Credentials,
@@ -247,13 +247,13 @@ where
             None => R::min_frequency(),
         }
     }
-    fn create_tx_config(&self, frame: Frame, data_rate: DR, channel: &DynamicChannel) -> TxConfig {
+    fn create_tx_config(&self, frame: Frame, data_rate: DR, channel: &C::Channel) -> TxConfig {
         let pw = self.get_tx_pwr(frame);
         match frame {
             Frame::Join => TxConfig {
                 pw,
                 rf: RfConfig {
-                    frequency: channel.frequency,
+                    frequency: channel.get_frequency().value(),
                     coding_rate: CodingRate::_4_5,
                     data_rate: R::convert_data_rate(data_rate),
                 },
@@ -261,7 +261,7 @@ where
             Frame::Data => TxConfig {
                 pw,
                 rf: RfConfig {
-                    frequency: channel.frequency,
+                    frequency: channel.get_frequency().value(),
                     coding_rate: CodingRate::_4_5,
                     data_rate: R::convert_data_rate(data_rate),
                 },
@@ -273,21 +273,21 @@ where
         frame: &Frame,
         window: &Window,
         data_rate: DR,
-        channel: &DynamicChannel,
+        channel: &C::Channel,
     ) -> RfConfig {
         match (frame, window) {
             (Frame::Join, Window::_1) => RfConfig {
-                frequency: channel.frequency,
+                frequency: channel.get_frequency().value(),
                 coding_rate: CodingRate::_4_5,
                 data_rate: R::convert_data_rate(data_rate),
             },
             (Frame::Join, Window::_2) => RfConfig {
-                frequency: channel.frequency,
+                frequency: channel.get_frequency().value(),
                 coding_rate: CodingRate::_4_5,
                 data_rate: R::convert_data_rate(data_rate),
             },
             (Frame::Data, Window::_1) => RfConfig {
-                frequency: channel.frequency,
+                frequency: channel.get_frequency().value(),
                 coding_rate: CodingRate::_4_5,
                 data_rate: R::convert_data_rate(data_rate),
             },
@@ -308,6 +308,8 @@ where
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>,
     ) -> Result<(), Error> {
         self.cmds.clear();
+        let mut last_link_adr_req: Option<LinkADRReqPayload> = None;
+        let mut channel_mask = self.status.channel_plan.get_channel_mask();
         for cmd in cmds {
             let res: Option<UplinkMacCommandCreator> = match cmd {
                 DownlinkMacCommand::LinkCheckAns(payload) => {
@@ -319,25 +321,16 @@ where
                     None
                 }
                 DownlinkMacCommand::LinkADRReq(payload) => {
-                    let mut ans = LinkADRAnsCreator::new();
-                    let new_tx_power =
-                        R::modify_dbm(payload.tx_power(), self.status.tx_power, R::max_eirp());
-                    let new_data_rate: Result<Option<DR>, ()> = if payload.data_rate() == 0xF {
-                        Ok(self.status.tx_data_rate)
-                    } else {
-                        DR::try_from(payload.data_rate()).map(|dr| Some(dr))
-                    };
-                    ans.set_tx_power_ack(new_tx_power.is_ok());
-                    ans.set_data_rate_ack(new_data_rate.is_ok());
-                    ans.set_channel_mask_ack(true);
-                    if new_tx_power.is_ok() && new_data_rate.is_ok() {
-                        self.status.tx_power = new_tx_power.unwrap();
-                        self.status.tx_data_rate = new_data_rate.unwrap();
-                        self.status
-                            .channel_plan
-                            .handle_channel_mask(payload.channel_mask());
-                    }
-                    Some(UplinkMacCommandCreator::LinkADRAns(ans))
+                    self.status
+                        .channel_plan
+                        .handle_channel_mask(
+                            &mut channel_mask,
+                            payload.channel_mask(),
+                            payload.redundancy().channel_mask_control(),
+                        )
+                        .unwrap();
+                    last_link_adr_req = Some(payload);
+                    None
                 }
                 DownlinkMacCommand::DutyCycleReq(payload) => {
                     self.status.max_duty_cycle = payload.max_duty_cycle();
@@ -405,25 +398,12 @@ where
                         ans.set_channel_frequency_ack(channel_frequency_ack);
                         ans.set_data_rate_range_ack(data_rate_range_ack);
                         if data_rate_range_ack && channel_frequency_ack {
-                            let channel_res = self
-                                .status
-                                .channel_plan
-                                .get_mut_channel(payload.channel_index() as usize);
-                            if let Some(channel) = channel_res {
-                                *channel = Some(DynamicChannel {
-                                    enabled: true,
-                                    frequency: payload.frequency().value(),
-                                    max_data_rate: payload.data_rate_range().max_data_rate(),
-                                    min_data_rate: payload.data_rate_range().min_data_range(),
-                                    dl_frequency: None,
-                                });
-                                Some(UplinkMacCommandCreator::NewChannelAns(ans))
-                            } else {
-                                None
-                            }
-                        } else {
-                            Some(UplinkMacCommandCreator::NewChannelAns(ans))
+                            match self.status.channel_plan.handle_new_channel_req(payload) {
+                                Ok(_) => ans.set_channel_frequency_ack(true),
+                                Err(_) => ans.set_channel_frequency_ack(false),
+                            };
                         }
+                        Some(UplinkMacCommandCreator::NewChannelAns(ans))
                     }
                 }
                 DownlinkMacCommand::DlChannelReq(payload) => {
@@ -431,25 +411,20 @@ where
                     let frequency_range = self.min_frequency()..self.max_frequency();
                     let channel_frequency_ack =
                         frequency_range.contains(&payload.frequency().value());
-                    let channel_res = self
+                    //let mut uplink_frequency_exists_ack = false;
+                    let uplink_frequency_exists_ack = self
                         .status
                         .channel_plan
-                        .get_mut_channel(payload.channel_index() as usize);
-                    if let Some(channel) = channel_res {
-                        if channel_frequency_ack {
-                            ans.set_channel_frequency_ack(true);
-                            if let Some(channel) = channel {
-                                channel.dl_frequency = Some(payload.frequency().value());
-                                ans.set_uplink_frequency_exists_ack(true);
-                            } else {
-                                ans.set_uplink_frequency_exists_ack(false);
-                            }
-                        } else {
-                            ans.set_uplink_frequency_exists_ack(false);
+                        .check_uplink_frequency_exists(payload.channel_index() as usize);
+                    ans.set_channel_frequency_ack(channel_frequency_ack);
+                    if channel_frequency_ack {
+                        match self.status.channel_plan.handle_dl_channel_req(payload) {
+                            Ok(_) => todo!(),
+                            Err(_) => todo!(),
                         }
-                        Some(UplinkMacCommandCreator::DlChannelAns(ans))
                     } else {
-                        None
+                        ans.set_uplink_frequency_exists_ack(uplink_frequency_exists_ack);
+                        Some(UplinkMacCommandCreator::DlChannelAns(ans))
                     }
                 }
                 DownlinkMacCommand::RXTimingSetupReq(payload) => {
@@ -472,6 +447,35 @@ where
                 self.add_uplink_cmd(uplink_cmd)?
             }
         }
+
+        if let Some(last_link_adr_req) = last_link_adr_req {
+            let mut ans = LinkADRAnsCreator::new();
+            let new_tx_power = R::modify_dbm(
+                last_link_adr_req.tx_power(),
+                self.status.tx_power,
+                R::max_eirp(),
+            );
+            let new_data_rate: Result<Option<DR>, ()> = if last_link_adr_req.data_rate() == 0xF {
+                Ok(self.status.tx_data_rate)
+            } else {
+                DR::try_from(last_link_adr_req.data_rate()).map(|dr| Some(dr))
+            };
+            ans.set_tx_power_ack(new_tx_power.is_ok());
+            ans.set_data_rate_ack(new_data_rate.is_ok());
+            ans.set_channel_mask_ack(true);
+            if new_tx_power.is_ok() && new_data_rate.is_ok() {
+                self.status.tx_power = new_tx_power.unwrap();
+                self.status.tx_data_rate = new_data_rate.unwrap();
+                if let Ok(_) = self.status.channel_plan.set_channel_mask(channel_mask) {
+                    self.status.tx_power = new_tx_power.unwrap();
+                    self.status.tx_data_rate = new_data_rate.unwrap();
+                    ans.set_channel_mask_ack(true);
+                } else {
+                    ans.set_channel_mask_ack(false);
+                }
+            }
+            self.add_uplink_cmd(UplinkMacCommandCreator::LinkADRAns(ans))?;
+        }
         Ok(())
     }
     fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error> {
@@ -484,7 +488,7 @@ where
         device: &mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
         data_rate: DR,
-        channel: &DynamicChannel,
+        channel: &C::Channel,
     ) -> Result<Option<(usize, RxQuality)>, <<D as Device>::PhyRxTx as PhyRxTx>::PhyError> {
         let windows = self.get_rx_windows(frame);
         let mut window = Window::_1;
@@ -586,7 +590,7 @@ impl<'a, R, D, C> crate::mac::Mac<R, D> for Mac<'a, R, D, C>
 where
     R: region::Region<C>,
     D: Device,
-    C: ChannelPlan + Default + 'a,
+    C: ChannelPlan + Default + Copy + 'a,
 {
     type Error = Error;
     type JoinFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm where Self: 'm;

@@ -1,10 +1,18 @@
-use crate::encoding::{
-    maccommandcreator::{DlChannelAnsCreator, NewChannelAnsCreator},
-    maccommands::{DlChannelReqPayload, NewChannelReqPayload},
+use crate::{
+    channel_mask::ChannelMask,
+    encoding::{
+        maccommandcreator::{DlChannelAnsCreator, NewChannelAnsCreator},
+        maccommands::{DlChannelReqPayload, NewChannelReqPayload},
+    },
 };
 
 use self::channel_plan::ChannelPlan;
 pub mod channel_plan;
+
+struct RegionalChannelMask {
+    index: u8,
+    enabled: bool,
+}
 
 pub trait Region<C>: crate::mac::Region
 where

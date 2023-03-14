@@ -1,4 +1,4 @@
-use crate::channel_mask::ChannelMask;
+use crate::{channel_mask::ChannelMask, frequency::Frequency};
 
 use super::maccommands::*;
 
@@ -420,7 +420,7 @@ impl RXParamSetupReqCreator {
     ///
     /// * frequency - instance of maccommands::Frequency or anything that can be converted
     /// into it.
-    pub fn set_frequency<'a, T: Into<Frequency<'a>>>(&mut self, frequency: T) -> &mut Self {
+    pub fn set_frequency<'a, T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
         let converted = frequency.into();
         self.data[2..5].copy_from_slice(converted.as_ref());
 
@@ -579,7 +579,7 @@ impl NewChannelReqCreator {
     ///
     /// * frequency - instance of maccommands::Frequency or anything that can be converted
     /// into it.
-    pub fn set_frequency<'a, T: Into<Frequency<'a>>>(&mut self, frequency: T) -> &mut Self {
+    pub fn set_frequency<'a, T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
         let converted = frequency.into();
         self.data[2..5].copy_from_slice(converted.as_ref());
 
@@ -708,7 +708,7 @@ pub struct DlChannelAnsCreator {
 }
 impl_mac_cmd_creator_boilerplate!(DlChannelAnsCreator, 0x0A, 2);
 impl DlChannelAnsCreator {
-    /// Sets the channel frequency acknowledgement of the NewChannelAns to the provided value.
+    /// Sets the channel frequency acknowledgement of the DlChannelAns to the provided value.
     ///
     /// # Argument
     ///
@@ -720,7 +720,7 @@ impl DlChannelAnsCreator {
         self
     }
 
-    /// Sets the data rate range acknowledgement of the NewChannelAns to the provided value.
+    /// Sets the uplink frequency exists acknowledgement of the DlChannelAns to the provided value.
     ///
     /// # Argument
     ///

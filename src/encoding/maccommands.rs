@@ -186,7 +186,7 @@ macro_rules! mac_cmds_enum {
 }
 pub(crate) use mac_cmds_enum;
 
-use crate::channel_mask::ChannelMask;
+use crate::{channel_mask::ChannelMask, frequency::Frequency};
 
 mac_cmd_zero_len! {
     /// LinkCheckReqPayload represents the LinkCheckReq LoRaWAN MACCommand.
@@ -481,45 +481,45 @@ impl From<u8> for DLSettings {
     }
 }
 
-/// Frequency represents a channel's central frequency.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Frequency<'a>(&'a [u8]);
+// /// Frequency represents a channel's central frequency.
+// #[derive(Debug, PartialEq, Eq)]
+// pub struct Frequency<'a>(&'a [u8]);
 
-impl<'a> Frequency<'a> {
-    /// Constructs a new Frequency from the provided bytes, without verifying if they are
-    /// admissible.
-    ///
-    /// Improper use of this method could lead to panic during runtime!
-    pub fn new_from_raw(bytes: &'a [u8]) -> Self {
-        Frequency(bytes)
-    }
+// impl<'a> Frequency<'a> {
+//     /// Constructs a new Frequency from the provided bytes, without verifying if they are
+//     /// admissible.
+//     ///
+//     /// Improper use of this method could lead to panic during runtime!
+//     pub fn new_from_raw(bytes: &'a [u8]) -> Self {
+//         Frequency(bytes)
+//     }
 
-    /// Constructs a new Frequency from the provided bytes.
-    pub fn new(bytes: &'a [u8]) -> Option<Self> {
-        if bytes.len() != 3 {
-            return None;
-        }
+//     /// Constructs a new Frequency from the provided bytes.
+//     pub fn new(bytes: &'a [u8]) -> Option<Self> {
+//         if bytes.len() != 3 {
+//             return None;
+//         }
 
-        Some(Frequency(bytes))
-    }
+//         Some(Frequency(bytes))
+//     }
 
-    /// Provides the decimal value in Hz of the frequency.
-    pub fn value(&self) -> u32 {
-        ((u32::from(self.0[2]) << 16) + (u32::from(self.0[1]) << 8) + u32::from(self.0[0])) * 100
-    }
-}
+//     /// Provides the decimal value in Hz of the frequency.
+//     pub fn value(&self) -> u32 {
+//         ((u32::from(self.0[2]) << 16) + (u32::from(self.0[1]) << 8) + u32::from(self.0[0])) * 100
+//     }
+// }
 
-impl<'a> From<&'a [u8; 3]> for Frequency<'a> {
-    fn from(v: &'a [u8; 3]) -> Self {
-        Frequency(&v[..])
-    }
-}
+// impl<'a> From<&'a [u8; 3]> for Frequency<'a> {
+//     fn from(v: &'a [u8; 3]) -> Self {
+//         Frequency(&v[..])
+//     }
+// }
 
-impl<'a> AsRef<[u8]> for Frequency<'a> {
-    fn as_ref(&self) -> &[u8] {
-        self.0
-    }
-}
+// impl<'a> AsRef<[u8]> for Frequency<'a> {
+//     fn as_ref(&self) -> &[u8] {
+//         self.0
+//     }
+// }
 
 impl<'a> RXParamSetupAnsPayload<'a> {
     create_ack_fn!(
