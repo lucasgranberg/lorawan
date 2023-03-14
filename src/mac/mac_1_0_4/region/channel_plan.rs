@@ -13,8 +13,12 @@ use crate::{
 pub trait Channel {
     fn get_frequency(&self) -> Frequency;
 }
-pub trait ChannelPlan {
+pub trait ChannelPlan<R>
+where
+    R: Region,
+{
     type Channel: Channel;
+    fn new() -> Self;
     fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>>;
     fn get_random_channel<'m>(&'m self, random: u32, data_rate: DR) -> Result<Self::Channel, ()>;
     fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), ()>;
@@ -49,11 +53,28 @@ where
     mask: [bool; 80],
     region: PhantomData<R>,
 }
-impl<R, const N: usize> ChannelPlan for DynamicChannelPlan<R, N>
+impl<R, const N: usize> ChannelPlan<R> for DynamicChannelPlan<R, N>
 where
     R: Region,
 {
     type Channel = DynamicChannel;
+
+    fn new() -> Self {
+        let mut channels = [None; N];
+        for (index, frequency) in R::mandatory_frequencies().iter().enumerate() {
+            channels[index] = Some(DynamicChannel {
+                frequency: Frequency::new_from_raw(&frequency.to_le_bytes()),
+                dl_frequency: None,
+                max_data_rate: R::max_data_rate_join_req() as u8,
+                min_data_rate: R::min_data_rate_join_req() as u8,
+            })
+        }
+        Self {
+            channels,
+            mask: [true; 80],
+            region: Default::default(),
+        }
+    }
     fn handle_channel_mask(
         &mut self,
         new_mask: &mut [bool; 80],

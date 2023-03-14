@@ -11,10 +11,9 @@ use self::{
         maccommands::DownlinkMacCommand,
         parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
     },
-    region::channel_plan::{Channel, ChannelPlan, DynamicChannel},
+    region::channel_plan::{Channel, ChannelPlan},
 };
 use crate::{
-    channel_mask::{self, ChannelMask},
     device::radio::{
         types::{RadioBuffer, RfConfig, TxConfig},
         PhyRxTx,
@@ -109,9 +108,10 @@ pub struct Credentials {
     pub app_key: AES128,
     pub dev_nonce: u16,
 }
-pub struct Status<C>
+pub struct Status<C, R>
 where
-    C: ChannelPlan + Default + Copy,
+    R: Region,
+    C: ChannelPlan<R> + Default + Copy,
 {
     pub(crate) confirm_next: bool,
     pub(crate) max_duty_cycle: f32,
@@ -123,13 +123,15 @@ where
     pub(crate) rx_quality: Option<RxQuality>,
     pub(crate) battery_level: Option<f32>,
     pub(crate) channel_plan: C,
+    region: PhantomData<R>,
 }
-impl<C> Default for Status<C>
+impl<C, R> Default for Status<C, R>
 where
-    C: ChannelPlan + Default + Copy,
+    R: Region,
+    C: ChannelPlan<R> + Default + Copy,
 {
     fn default() -> Self {
-        Status {
+        Self {
             tx_data_rate: None,
             confirm_next: false,
             tx_power: None,
@@ -140,6 +142,7 @@ where
             rx_quality: None,
             battery_level: None,
             channel_plan: Default::default(),
+            region: Default::default(),
         }
     }
 }
@@ -147,25 +150,25 @@ pub struct Mac<'a, R, D, C>
 where
     R: Region,
     D: Device,
-    C: ChannelPlan + Default + Copy,
+    C: ChannelPlan<R> + Default + Copy,
 {
     credentials: &'a mut Credentials,
     session: &'a mut Option<Session>,
-    status: &'a mut Status<C>,
+    status: &'a mut Status<C, R>,
     region: PhantomData<R>,
     device: PhantomData<D>,
     cmds: Vec<UplinkMacCommandCreator, 15>,
 }
 impl<'a, R, D, C> Mac<'a, R, D, C>
 where
-    R: region::Region<C>,
+    R: region::Region,
     D: Device,
-    C: ChannelPlan + Default + Copy,
+    C: ChannelPlan<R> + Default + Copy,
 {
     pub fn new(
         credentials: &'a mut Credentials,
         session: &'a mut Option<Session>,
-        status: &'a mut Status<C>,
+        status: &'a mut Status<C, R>,
     ) -> Self {
         Self {
             credentials,
@@ -588,9 +591,9 @@ where
 
 impl<'a, R, D, C> crate::mac::Mac<R, D> for Mac<'a, R, D, C>
 where
-    R: region::Region<C>,
+    R: region::Region + 'static,
     D: Device,
-    C: ChannelPlan + Default + Copy + 'a,
+    C: ChannelPlan<R> + Default + Copy + 'a,
 {
     type Error = Error;
     type JoinFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm where Self: 'm;

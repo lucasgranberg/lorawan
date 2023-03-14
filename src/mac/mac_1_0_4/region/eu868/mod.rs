@@ -1,5 +1,3 @@
-use core::marker::PhantomData;
-
 use crate::{
     device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor},
     DR,
@@ -7,18 +5,11 @@ use crate::{
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 
-use super::channel_plan::ChannelPlan;
-
-pub struct Eu868<C>
-where
-    C: ChannelPlan,
-{
-    channel_plan: PhantomData<C>,
-}
-impl<C> crate::mac::Region for Eu868<C>
-where
-    C: ChannelPlan,
-{
+pub struct Eu868 {}
+impl crate::mac::Region for Eu868 {
+    fn mandatory_frequencies() -> &'static [u32] {
+        &JOIN_CHANNELS
+    }
     fn default_channels() -> u8 {
         3
     }
@@ -38,6 +29,13 @@ where
 
     fn max_data_rate() -> DR {
         DR::_7
+    }
+    fn min_data_rate_join_req() -> DR {
+        DR::_0
+    }
+
+    fn max_data_rate_join_req() -> DR {
+        DR::_5
     }
     fn default_rx2_data_rate() -> DR {
         DR::_0

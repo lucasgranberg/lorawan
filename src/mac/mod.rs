@@ -45,6 +45,9 @@ where
 
 pub trait Region {
     fn default_channels() -> u8;
+    fn mandatory_frequencies() -> &'static [u32];
+    fn min_data_rate_join_req() -> DR;
+    fn max_data_rate_join_req() -> DR;
     fn min_data_rate() -> DR;
     fn max_data_rate() -> DR;
     fn default_data_rate() -> DR;
