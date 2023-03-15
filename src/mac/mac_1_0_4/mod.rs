@@ -22,6 +22,7 @@ use crate::{
         PhyRxTx,
     },
     device::{
+        self,
         radio::types::{CodingRate, RxQuality},
         timer::Timer,
         Device,
@@ -255,25 +256,35 @@ where
             None => R::min_frequency(),
         }
     }
-    fn create_tx_config(&self, frame: Frame, data_rate: DR, channel: &C::Channel) -> TxConfig {
+    fn create_tx_config(
+        &self,
+        frame: Frame,
+        data_rate: DR,
+        channel: &C::Channel,
+    ) -> Result<TxConfig, Error> {
         let pw = self.get_tx_pwr(frame);
-        match frame {
-            Frame::Join => TxConfig {
-                pw,
-                rf: RfConfig {
-                    frequency: channel.get_frequency().value(),
-                    coding_rate: CodingRate::_4_5,
-                    data_rate: R::convert_data_rate(data_rate),
+        if let Some(data_rate) = R::convert_data_rate(data_rate) {
+            let tx_config = match frame {
+                Frame::Join => TxConfig {
+                    pw,
+                    rf: RfConfig {
+                        frequency: channel.get_frequency().value(),
+                        coding_rate: CodingRate::_4_5,
+                        data_rate: data_rate,
+                    },
                 },
-            },
-            Frame::Data => TxConfig {
-                pw,
-                rf: RfConfig {
-                    frequency: channel.get_frequency().value(),
-                    coding_rate: CodingRate::_4_5,
-                    data_rate: R::convert_data_rate(data_rate),
+                Frame::Data => TxConfig {
+                    pw,
+                    rf: RfConfig {
+                        frequency: channel.get_frequency().value(),
+                        coding_rate: CodingRate::_4_5,
+                        data_rate: data_rate,
+                    },
                 },
-            },
+            };
+            Ok(tx_config)
+        } else {
+            Err(Error::UnsupportedDataRate)
         }
     }
     fn create_rf_config(
@@ -282,32 +293,41 @@ where
         window: &Window,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> RfConfig {
-        match (frame, window) {
-            (Frame::Join, Window::_1) => RfConfig {
-                frequency: channel.get_frequency().value(),
-                coding_rate: CodingRate::_4_5,
-                data_rate: R::convert_data_rate(data_rate),
-            },
-            (Frame::Join, Window::_2) => RfConfig {
-                frequency: channel.get_frequency().value(),
-                coding_rate: CodingRate::_4_5,
-                data_rate: R::convert_data_rate(data_rate),
-            },
-            (Frame::Data, Window::_1) => RfConfig {
-                frequency: channel.get_frequency().value(),
-                coding_rate: CodingRate::_4_5,
-                data_rate: R::convert_data_rate(data_rate),
-            },
-            (Frame::Data, Window::_2) => RfConfig {
-                frequency: R::default_rx2_frequency(),
-                coding_rate: CodingRate::_4_5,
-                data_rate: R::convert_data_rate(
-                    self.status
-                        .rx2_data_rate
-                        .unwrap_or(R::default_rx2_data_rate()),
-                ),
-            },
+    ) -> Result<RfConfig, Error> {
+        let data_rate = match (frame, window) {
+            (Frame::Data, Window::_2) => R::convert_data_rate(
+                self.status
+                    .rx2_data_rate
+                    .unwrap_or(R::default_rx2_data_rate()),
+            ),
+            _ => R::convert_data_rate(data_rate),
+        };
+        if let Some(data_rate) = data_rate {
+            let rf_config = match (frame, window) {
+                (Frame::Join, Window::_1) => RfConfig {
+                    frequency: channel.get_frequency().value(),
+                    coding_rate: CodingRate::_4_5,
+                    data_rate,
+                },
+                (Frame::Join, Window::_2) => RfConfig {
+                    frequency: channel.get_frequency().value(),
+                    coding_rate: CodingRate::_4_5,
+                    data_rate,
+                },
+                (Frame::Data, Window::_1) => RfConfig {
+                    frequency: channel.get_frequency().value(),
+                    coding_rate: CodingRate::_4_5,
+                    data_rate,
+                },
+                (Frame::Data, Window::_2) => RfConfig {
+                    frequency: R::default_rx2_frequency(),
+                    coding_rate: CodingRate::_4_5,
+                    data_rate,
+                },
+            };
+            Ok(rf_config)
+        } else {
+            Err(Error::UnsupportedDataRate)
         }
     }
     fn handle_downlink_macs<'b>(
@@ -478,7 +498,7 @@ where
                     if R::supports_tx_param_setup() {
                         let ans = TXParamSetupAnsCreator::new();
                         let _ret = Some(UplinkMacCommandCreator::TXParamSetupAns(ans));
-                        todo!();
+                        todo!("TXParamSetupReq not implemented yet");
                     } else {
                         None
                     }
@@ -501,14 +521,14 @@ where
         radio_buffer: &'m mut RadioBuffer<256>,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> Result<Option<(usize, RxQuality)>, <<D as Device>::PhyRxTx as PhyRxTx>::PhyError> {
+    ) -> Result<Option<(usize, RxQuality)>, Error> {
         let windows = self.get_rx_windows(frame);
         let mut window = Window::_1;
 
         radio_buffer.clear();
 
         loop {
-            let rf_config = self.create_rf_config(&frame, &window, data_rate, channel);
+            let rf_config = self.create_rf_config(&frame, &window, data_rate, channel)?;
             device.timer().reset();
             device.timer().at(windows.get_open(&window) as u64).await;
             let timeout_fut = device.timer().at(windows.get_close(&window) as u64);
@@ -529,7 +549,7 @@ where
                             window = Window::_2;
                             close_at.await
                         } else {
-                            return Err(e);
+                            return Err(Error::Device(device::Error::Radio));
                         }
                     }
                 },
@@ -622,7 +642,7 @@ where
                 .get_random_channel(random, DR::_0)
                 .map_err(|_| Error::NoValidChannelFound)?;
 
-            let tx_config = self.create_tx_config(Frame::Join, R::default_data_rate(), &channel);
+            let tx_config = self.create_tx_config(Frame::Join, R::default_data_rate(), &channel)?;
             // Transmit the join payload
             let _ms = device
                 .radio()
@@ -687,7 +707,7 @@ where
             let _ = self.prepare_buffer(data, fport, confirmed, radio_buffer, DefaultFactory)?;
 
             // Send data
-            let tx_config = self.create_tx_config(Frame::Data, data_rate, &channel);
+            let tx_config = self.create_tx_config(Frame::Data, data_rate, &channel)?;
             // Transmit our data packet
             let _ms = device
                 .radio()

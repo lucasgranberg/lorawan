@@ -48,45 +48,37 @@ impl crate::mac::Region for Eu868 {
         DR::_0
     }
 
-    fn convert_data_rate(dr: DR) -> Datarate {
+    fn convert_data_rate(dr: DR) -> Option<Datarate> {
         match dr {
-            DR::_0 => Datarate {
+            DR::_0 => Some(Datarate {
                 spreading_factor: SpreadingFactor::_12,
                 bandwidth: Bandwidth::_125KHz,
-            },
-            DR::_1 => Datarate {
+            }),
+            DR::_1 => Some(Datarate {
                 spreading_factor: SpreadingFactor::_11,
                 bandwidth: Bandwidth::_125KHz,
-            },
-            DR::_2 => Datarate {
+            }),
+            DR::_2 => Some(Datarate {
                 spreading_factor: SpreadingFactor::_10,
                 bandwidth: Bandwidth::_125KHz,
-            },
-            DR::_3 => Datarate {
+            }),
+            DR::_3 => Some(Datarate {
                 spreading_factor: SpreadingFactor::_9,
                 bandwidth: Bandwidth::_125KHz,
-            },
-            DR::_4 => Datarate {
+            }),
+            DR::_4 => Some(Datarate {
                 spreading_factor: SpreadingFactor::_8,
                 bandwidth: Bandwidth::_125KHz,
-            },
-            DR::_5 => Datarate {
+            }),
+            DR::_5 => Some(Datarate {
                 spreading_factor: SpreadingFactor::_7,
                 bandwidth: Bandwidth::_125KHz,
-            },
-            DR::_6 => Datarate {
+            }),
+            DR::_6 => Some(Datarate {
                 spreading_factor: SpreadingFactor::_7,
                 bandwidth: Bandwidth::_250KHz,
-            },
-            DR::_7 => todo!(),
-            DR::_8 => todo!(),
-            DR::_9 => todo!(),
-            DR::_10 => todo!(),
-            DR::_11 => todo!(),
-            DR::_12 => todo!(),
-            DR::_13 => todo!(),
-            DR::_14 => todo!(),
-            DR::_15 => todo!(),
+            }),
+            _ => None,
         }
     }
     fn default_coding_rate() -> CodingRate {

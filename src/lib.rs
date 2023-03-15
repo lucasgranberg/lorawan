@@ -16,6 +16,7 @@ pub mod mac;
 pub enum Error {
     //<RadioError> {
     Device(device::Error),
+    UnsupportedDataRate,
     InvalidMic,
     InvalidDevAddr,
     UnableToDecodePayload(&'static str),
