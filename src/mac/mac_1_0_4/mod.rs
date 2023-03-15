@@ -11,7 +11,10 @@ use self::{
         maccommands::DownlinkMacCommand,
         parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
     },
-    region::channel_plan::{Channel, ChannelPlan},
+    region::{
+        channel_plan::{Channel, ChannelPlan},
+        Region,
+    },
 };
 use crate::{
     device::radio::{
@@ -31,7 +34,7 @@ use crate::{
             NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
             TXParamSetupAnsCreator,
         },
-        maccommands::{LinkADRReqPayload, MacCommandIterator, SerializableMacCommand},
+        maccommands::{MacCommandIterator, SerializableMacCommand},
         parser::{
             parse_with_factory, DataHeader, DevAddr, DevNonce, FCtrl, FRMPayload, PhyPayload, EUI64,
         },
@@ -43,7 +46,7 @@ use generic_array::{typenum::U256, GenericArray};
 use heapless::Vec;
 use rand_core::RngCore;
 
-use super::{Region, RxWindows};
+use super::RxWindows;
 mod encoding;
 pub mod region;
 pub struct Session {
@@ -111,7 +114,7 @@ pub struct Credentials {
 pub struct Status<C, R>
 where
     R: Region,
-    C: ChannelPlan<R> + Default + Copy,
+    C: ChannelPlan<R> + Default,
 {
     pub(crate) confirm_next: bool,
     pub(crate) max_duty_cycle: f32,
@@ -123,12 +126,13 @@ where
     pub(crate) rx_quality: Option<RxQuality>,
     pub(crate) battery_level: Option<f32>,
     pub(crate) channel_plan: C,
+    pub(crate) number_of_transmissions: u8,
     region: PhantomData<R>,
 }
 impl<C, R> Default for Status<C, R>
 where
     R: Region,
-    C: ChannelPlan<R> + Default + Copy,
+    C: ChannelPlan<R> + Default,
 {
     fn default() -> Self {
         Self {
@@ -141,6 +145,7 @@ where
             rx2_data_rate: None,
             rx_quality: None,
             battery_level: None,
+            number_of_transmissions: 0,
             channel_plan: Default::default(),
             region: Default::default(),
         }
@@ -150,7 +155,7 @@ pub struct Mac<'a, R, D, C>
 where
     R: Region,
     D: Device,
-    C: ChannelPlan<R> + Default + Copy,
+    C: ChannelPlan<R> + Default,
 {
     credentials: &'a mut Credentials,
     session: &'a mut Option<Session>,
@@ -163,7 +168,7 @@ impl<'a, R, D, C> Mac<'a, R, D, C>
 where
     R: region::Region,
     D: Device,
-    C: ChannelPlan<R> + Default + Copy,
+    C: ChannelPlan<R> + Default,
 {
     pub fn new(
         credentials: &'a mut Credentials,
@@ -354,6 +359,8 @@ where
                                 {
                                     self.status.tx_power = new_tx_power.unwrap();
                                     self.status.tx_data_rate = new_data_rate.unwrap();
+                                    self.status.number_of_transmissions =
+                                        payload.redundancy().number_of_transmissions();
                                     ans.set_channel_mask_ack(true);
                                 } else {
                                     ans.set_channel_mask_ack(false);
@@ -595,7 +602,7 @@ impl<'a, R, D, C> crate::mac::Mac<R, D> for Mac<'a, R, D, C>
 where
     R: region::Region + 'static,
     D: Device,
-    C: ChannelPlan<R> + Default + Copy + 'a,
+    C: ChannelPlan<R> + Default + 'a,
 {
     type Error = Error;
     type JoinFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm where Self: 'm;

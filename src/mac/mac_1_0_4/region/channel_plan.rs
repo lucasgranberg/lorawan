@@ -6,9 +6,10 @@ use crate::{
     channel_mask::ChannelMask,
     encoding::maccommands::{DlChannelReqPayload, NewChannelReqPayload},
     frequency::Frequency,
-    mac::Region,
     DR,
 };
+
+use super::Region;
 
 pub trait Channel {
     fn get_frequency(&self) -> Frequency;
@@ -18,7 +19,6 @@ where
     R: Region,
 {
     type Channel: Channel;
-    fn new() -> Self;
     fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>>;
     fn get_random_channel<'m>(&'m self, random: u32, data_rate: DR) -> Result<Self::Channel, ()>;
     fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), ()>;
@@ -53,13 +53,12 @@ where
     mask: [bool; 80],
     region: PhantomData<R>,
 }
-impl<R, const N: usize> ChannelPlan<R> for DynamicChannelPlan<R, N>
+
+impl<R, const N: usize> Default for DynamicChannelPlan<R, N>
 where
     R: Region,
 {
-    type Channel = DynamicChannel;
-
-    fn new() -> Self {
+    fn default() -> Self {
         let mut channels = [None; N];
         for (index, frequency) in R::mandatory_frequencies().iter().enumerate() {
             channels[index] = Some(DynamicChannel {
@@ -75,6 +74,12 @@ where
             region: Default::default(),
         }
     }
+}
+impl<R, const N: usize> ChannelPlan<R> for DynamicChannelPlan<R, N>
+where
+    R: Region,
+{
+    type Channel = DynamicChannel;
     fn handle_channel_mask(
         &mut self,
         new_mask: &mut [bool; 80],
