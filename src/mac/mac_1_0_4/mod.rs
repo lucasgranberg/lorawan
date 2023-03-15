@@ -450,23 +450,23 @@ where
                 DownlinkMacCommand::DlChannelReq(payload) => {
                     let mut ans = DlChannelAnsCreator::new();
                     let frequency_range = self.min_frequency()..self.max_frequency();
-                    let channel_frequency_ack =
+                    let mut channel_frequency_ack =
                         frequency_range.contains(&payload.frequency().value());
                     //let mut uplink_frequency_exists_ack = false;
                     let uplink_frequency_exists_ack = self
                         .status
                         .channel_plan
                         .check_uplink_frequency_exists(payload.channel_index() as usize);
-                    ans.set_channel_frequency_ack(channel_frequency_ack);
                     if channel_frequency_ack {
-                        match self.status.channel_plan.handle_dl_channel_req(payload) {
-                            Ok(_) => todo!(),
-                            Err(_) => todo!(),
-                        }
-                    } else {
-                        ans.set_uplink_frequency_exists_ack(uplink_frequency_exists_ack);
-                        Some(UplinkMacCommandCreator::DlChannelAns(ans))
+                        channel_frequency_ack =
+                            match self.status.channel_plan.handle_dl_channel_req(payload) {
+                                Ok(_) => true,
+                                Err(_) => false,
+                            }
                     }
+                    ans.set_uplink_frequency_exists_ack(uplink_frequency_exists_ack);
+                    ans.set_channel_frequency_ack(channel_frequency_ack);
+                    Some(UplinkMacCommandCreator::DlChannelAns(ans))
                 }
                 DownlinkMacCommand::RXTimingSetupReq(payload) => {
                     self.status.rx1_delay = Some(payload.delay());
