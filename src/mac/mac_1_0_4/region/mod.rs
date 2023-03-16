@@ -8,7 +8,9 @@ pub mod channel_plan;
 #[derive(Debug)]
 pub enum Error {
     InvalidTxPower,
+    InvalidChannelIndex,
     DataRateNotSupported,
+    NoValidChannelFound,
 }
 pub trait Region {
     fn default_channels() -> u8;

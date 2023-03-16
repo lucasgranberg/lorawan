@@ -9,7 +9,7 @@ use crate::{
     DR,
 };
 
-use super::Region;
+use super::{Error, Region};
 
 pub trait Channel {
     fn get_frequency(&self) -> Frequency;
@@ -20,8 +20,8 @@ where
 {
     type Channel: Channel;
     fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>>;
-    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<Self::Channel, ()>;
-    fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), ()>;
+    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<Self::Channel, Error>;
+    fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), Error>;
     fn check_uplink_frequency_exists(&self, index: usize) -> bool;
     fn handle_channel_mask(
         &mut self,
@@ -30,8 +30,8 @@ where
         channel_mask_ctrl: u8,
     ) -> Result<(), ()>;
     fn get_channel_mask(&self) -> [bool; 80];
-    fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), ()>;
-    fn handle_dl_channel_req(&mut self, payload: DlChannelReqPayload) -> Result<(), ()>;
+    fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), Error>;
+    fn handle_dl_channel_req(&mut self, payload: DlChannelReqPayload) -> Result<(), Error>;
 }
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicChannel {
@@ -112,7 +112,7 @@ where
         self.channels.get_mut(index)
     }
 
-    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<DynamicChannel, ()> {
+    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<DynamicChannel, Error> {
         let mut valid_channels: Vec<&DynamicChannel, N> = Vec::new();
         for valid_channel in self
             .channels
@@ -131,7 +131,7 @@ where
             valid_channels.push(valid_channel).unwrap();
         }
         if valid_channels.is_empty() {
-            Err(())
+            Err(Error::NoValidChannelFound)
         } else {
             Ok(*&(*valid_channels
                 .get((random % valid_channels.len() as u32) as usize)
@@ -140,7 +140,7 @@ where
         }
     }
 
-    fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), ()> {
+    fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), Error> {
         if (payload.channel_index() as usize) < self.channels.len() {
             self.channels[payload.channel_index() as usize] = Some(DynamicChannel {
                 frequency: payload.frequency(),
@@ -150,11 +150,11 @@ where
             });
             Ok(())
         } else {
-            Err(())
+            Err(Error::InvalidChannelIndex)
         }
     }
 
-    fn handle_dl_channel_req(&mut self, payload: DlChannelReqPayload) -> Result<(), ()> {
+    fn handle_dl_channel_req(&mut self, payload: DlChannelReqPayload) -> Result<(), Error> {
         let index = payload.channel_index() as usize;
         if (index) < N {
             if let Some(mut channel) = self.channels[index] {
@@ -162,14 +162,14 @@ where
                 return Ok(());
             }
         }
-        Err(())
+        Err(Error::InvalidChannelIndex)
     }
 
     fn get_channel_mask(&self) -> [bool; 80] {
         self.mask
     }
 
-    fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), ()> {
+    fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), Error> {
         self.mask = mask;
         Ok(())
     }
