@@ -1,4 +1,5 @@
 pub mod radio;
+pub mod radio_buffer;
 pub mod rng;
 pub mod timer;
 use radio::Radio;
@@ -15,6 +16,7 @@ where
     Timer(<<D as Device>::Timer as Timer>::Error),
     Radio(<<D as Device>::Radio as Radio>::Error),
     Rng(<<D as Device>::Rng as Rng>::Error),
+    RadioBuffer(radio_buffer::Error),
 }
 pub trait Device {
     type Timer: Timer;

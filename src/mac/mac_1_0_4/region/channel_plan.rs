@@ -28,7 +28,7 @@ where
         new_mask: &mut [bool; 80],
         channel_mask: ChannelMask,
         channel_mask_ctrl: u8,
-    ) -> Result<(), ()>;
+    ) -> Result<(), Error>;
     fn get_channel_mask(&self) -> [bool; 80];
     fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), Error>;
     fn handle_dl_channel_req(&mut self, payload: DlChannelReqPayload) -> Result<(), Error>;
@@ -85,7 +85,7 @@ where
         new_mask: &mut [bool; 80],
         channel_mask: ChannelMask,
         channel_mask_ctrl: u8,
-    ) -> Result<(), ()> {
+    ) -> Result<(), Error> {
         match channel_mask_ctrl {
             0..=4 => {
                 for i in 0..15 {
@@ -105,7 +105,7 @@ where
                 new_mask.fill(true);
                 Ok(())
             }
-            _ => Err(()),
+            _ => Err(Error::InvalidChannelMaskCtrl),
         }
     }
     fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<DynamicChannel>> {
@@ -133,10 +133,9 @@ where
         if valid_channels.is_empty() {
             Err(Error::NoValidChannelFound)
         } else {
-            Ok(*&(*valid_channels
+            Ok(*(*valid_channels
                 .get((random % valid_channels.len() as u32) as usize)
-                .unwrap())
-            .clone())
+                .unwrap()))
         }
     }
 

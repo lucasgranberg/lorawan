@@ -2,7 +2,7 @@ use core::fmt::Debug;
 use futures::Future;
 
 use crate::{
-    device::{radio::types::RadioBuffer, Device},
+    device::{radio_buffer::RadioBuffer, Device},
     Window,
 };
 

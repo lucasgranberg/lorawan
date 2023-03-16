@@ -165,7 +165,7 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> JoinRequestPayload<T, F> {
     /// let phy = lorawan::parser::JoinRequestPayload::new_with_factory(data,
     ///     lorawan::default_crypto::DefaultFactory);
     /// ```
-    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, Error> {
+    pub fn new_with_factory(data: T, factory: F) -> Result<Self, Error> {
         if !Self::can_build_from(data.as_ref()) {
             Err(Error::InvalidDataForJoinRequest)
         } else {
@@ -223,7 +223,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> EncryptedJoinAcceptPayload<
     ///
     /// * data - the bytes for the payload.
     /// * factory - the factory that shall be used to create object for crypto functions.
-    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, Error> {
+    pub fn new_with_factory(data: T, factory: F) -> Result<Self, Error> {
         if Self::can_build_from(data.as_ref()) {
             Ok(Self(data, factory))
         } else {
@@ -310,7 +310,7 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> EncryptedDataPayload<T, F> {
     ///
     /// * data - the bytes for the payload.
     /// * factory - the factory that shall be used to create object for crypto functions.
-    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, Error> {
+    pub fn new_with_factory(data: T, factory: F) -> Result<Self, Error> {
         if Self::can_build_from(data.as_ref()) {
             Ok(Self(data, factory))
         } else {

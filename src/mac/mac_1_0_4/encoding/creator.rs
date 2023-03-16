@@ -35,16 +35,6 @@ pub struct JoinRequestCreator<D, F> {
 }
 
 impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
-    /// Creates a well initialized JoinRequestCreator with specific crypto functions.
-    pub fn with_options<'a>(mut data: D, factory: F) -> Result<Self, Error> {
-        let d = data.as_mut();
-        if d.len() < 23 {
-            return Err(Error::BufferTooSmall);
-        }
-        d[0] = 0x00;
-        Ok(Self { data, factory })
-    }
-
     /// Sets the application EUI of the JoinRequest to the provided value.
     ///
     /// # Argument
@@ -123,7 +113,7 @@ pub struct DataPayloadCreator<D, F> {
     fcnt: u32,
     factory: F,
 }
-
+#[allow(dead_code)]
 impl<D: AsMut<[u8]>, F: CryptoFactory> DataPayloadCreator<D, F> {
     pub fn new(data: D, factory: F) -> Self {
         DataPayloadCreator {
@@ -132,17 +122,6 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> DataPayloadCreator<D, F> {
             fcnt: 0,
             factory,
         }
-    }
-    /// Creates a well initialized DataPayloadCreator with specific crypto functions.
-    ///
-    /// By default the packet is unconfirmed data up packet.
-    pub fn with_options<'a>(mut data: D, factory: F) -> Result<Self, &'a str> {
-        let d = data.as_mut();
-        if d.len() < 255 {
-            return Err("data slice is too short");
-        }
-        d[0] = 0x40;
-        Ok(Self::new(data, factory))
     }
 
     /// Sets whether the packet is uplink or downlink.

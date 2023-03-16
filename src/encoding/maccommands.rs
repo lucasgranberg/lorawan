@@ -56,7 +56,7 @@ macro_rules! mac_cmds {
 
             impl<'a> $type<'a> {
                 /// Creates a new instance of the mac command if there is enought data.
-                pub fn new<'b>(data: &'a [u8]) -> Result<$type<'a>, Error> {
+                pub fn new(data: &'a [u8]) -> Result<$type<'a>, Error> {
                     if data.len() < $size {
                         Err(Error::IncorrectSizeForMacCommand)
                     } else {

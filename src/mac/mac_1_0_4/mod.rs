@@ -19,11 +19,12 @@ use self::{
 };
 use crate::{
     device::radio::{
-        types::{RadioBuffer, RfConfig, TxConfig},
+        types::{RfConfig, TxConfig},
         Radio,
     },
     device::{
         radio::types::{CodingRate, RxQuality},
+        radio_buffer::RadioBuffer,
         rng::Rng,
         timer::Timer,
         Device,
@@ -268,7 +269,7 @@ where
                 rf: RfConfig {
                     frequency: channel.get_frequency().value(),
                     coding_rate: CodingRate::_4_5,
-                    data_rate: data_rate,
+                    data_rate,
                 },
             },
             Frame::Data => TxConfig {
@@ -276,7 +277,7 @@ where
                 rf: RfConfig {
                     frequency: channel.get_frequency().value(),
                     coding_rate: CodingRate::_4_5,
-                    data_rate: data_rate,
+                    data_rate,
                 },
             },
         };
@@ -597,6 +598,7 @@ where
             }
 
             phy.set_confirmed(confirmed)
+                .set_uplink(true)
                 .set_fctrl(&fctrl)
                 .set_f_port(fport)
                 .set_dev_addr(*session.devaddr())

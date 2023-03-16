@@ -102,6 +102,7 @@ macro_rules! mac_cmds_creator_enum {
         )*
     }
     ) => {
+        #[allow(dead_code)]
         $outer_vis enum $outer_type$(<$outer_lifetime>)* {
             $(
                 $name(concat_idents!($name,Creator)),

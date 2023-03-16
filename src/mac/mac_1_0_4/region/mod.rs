@@ -9,6 +9,7 @@ pub mod channel_plan;
 pub enum Error {
     InvalidTxPower,
     InvalidChannelIndex,
+    InvalidChannelMaskCtrl,
     DataRateNotSupported,
     NoValidChannelFound,
 }
