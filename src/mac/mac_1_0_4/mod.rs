@@ -1,5 +1,6 @@
 use core::{
     cmp::{max, min},
+    fmt::Debug,
     future::Future,
     marker::PhantomData,
 };
@@ -19,11 +20,11 @@ use self::{
 use crate::{
     device::radio::{
         types::{RadioBuffer, RfConfig, TxConfig},
-        PhyRxTx,
+        Radio,
     },
     device::{
-        self,
         radio::types::{CodingRate, RxQuality},
+        rng::Rng,
         timer::Timer,
         Device,
     },
@@ -45,7 +46,6 @@ use crate::{
 use futures::{future::select, future::Either, pin_mut};
 use generic_array::{typenum::U256, GenericArray};
 use heapless::Vec;
-use rand_core::RngCore;
 
 use super::RxWindows;
 mod encoding;
@@ -168,7 +168,7 @@ where
 impl<'a, R, D, C> Mac<'a, R, D, C>
 where
     R: region::Region,
-    D: Device,
+    D: Device + Debug,
     C: ChannelPlan<R> + Default,
 {
     pub fn new(
@@ -244,9 +244,7 @@ where
     }
     fn max_frequency(&self) -> u32 {
         match D::max_frequency() {
-            Some(device_max_frequency) => min(device_max_frequency, R::max_frequency())
-                .try_into()
-                .unwrap(),
+            Some(device_max_frequency) => min(device_max_frequency, R::max_frequency()),
             None => R::max_frequency(),
         }
     }
@@ -261,31 +259,28 @@ where
         frame: Frame,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> Result<TxConfig, Error> {
+    ) -> Result<TxConfig, Error<D>> {
         let pw = self.get_tx_pwr(frame);
-        if let Some(data_rate) = R::convert_data_rate(data_rate) {
-            let tx_config = match frame {
-                Frame::Join => TxConfig {
-                    pw,
-                    rf: RfConfig {
-                        frequency: channel.get_frequency().value(),
-                        coding_rate: CodingRate::_4_5,
-                        data_rate: data_rate,
-                    },
+        let data_rate = R::convert_data_rate(data_rate).map_err(Error::Region)?;
+        let tx_config = match frame {
+            Frame::Join => TxConfig {
+                pw,
+                rf: RfConfig {
+                    frequency: channel.get_frequency().value(),
+                    coding_rate: CodingRate::_4_5,
+                    data_rate: data_rate,
                 },
-                Frame::Data => TxConfig {
-                    pw,
-                    rf: RfConfig {
-                        frequency: channel.get_frequency().value(),
-                        coding_rate: CodingRate::_4_5,
-                        data_rate: data_rate,
-                    },
+            },
+            Frame::Data => TxConfig {
+                pw,
+                rf: RfConfig {
+                    frequency: channel.get_frequency().value(),
+                    coding_rate: CodingRate::_4_5,
+                    data_rate: data_rate,
                 },
-            };
-            Ok(tx_config)
-        } else {
-            Err(Error::UnsupportedDataRate)
-        }
+            },
+        };
+        Ok(tx_config)
     }
     fn create_rf_config(
         &self,
@@ -293,7 +288,7 @@ where
         window: &Window,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> Result<RfConfig, Error> {
+    ) -> Result<RfConfig, Error<D>> {
         let data_rate = match (frame, window) {
             (Frame::Data, Window::_2) => R::convert_data_rate(
                 self.status
@@ -301,40 +296,37 @@ where
                     .unwrap_or(R::default_rx2_data_rate()),
             ),
             _ => R::convert_data_rate(data_rate),
-        };
-        if let Some(data_rate) = data_rate {
-            let rf_config = match (frame, window) {
-                (Frame::Join, Window::_1) => RfConfig {
-                    frequency: channel.get_frequency().value(),
-                    coding_rate: CodingRate::_4_5,
-                    data_rate,
-                },
-                (Frame::Join, Window::_2) => RfConfig {
-                    frequency: channel.get_frequency().value(),
-                    coding_rate: CodingRate::_4_5,
-                    data_rate,
-                },
-                (Frame::Data, Window::_1) => RfConfig {
-                    frequency: channel.get_frequency().value(),
-                    coding_rate: CodingRate::_4_5,
-                    data_rate,
-                },
-                (Frame::Data, Window::_2) => RfConfig {
-                    frequency: R::default_rx2_frequency(),
-                    coding_rate: CodingRate::_4_5,
-                    data_rate,
-                },
-            };
-            Ok(rf_config)
-        } else {
-            Err(Error::UnsupportedDataRate)
         }
+        .map_err(Error::Region)?;
+        let rf_config = match (frame, window) {
+            (Frame::Join, Window::_1) => RfConfig {
+                frequency: channel.get_frequency().value(),
+                coding_rate: CodingRate::_4_5,
+                data_rate,
+            },
+            (Frame::Join, Window::_2) => RfConfig {
+                frequency: channel.get_frequency().value(),
+                coding_rate: CodingRate::_4_5,
+                data_rate,
+            },
+            (Frame::Data, Window::_1) => RfConfig {
+                frequency: channel.get_frequency().value(),
+                coding_rate: CodingRate::_4_5,
+                data_rate,
+            },
+            (Frame::Data, Window::_2) => RfConfig {
+                frequency: R::default_rx2_frequency(),
+                coding_rate: CodingRate::_4_5,
+                data_rate,
+            },
+        };
+        Ok(rf_config)
     }
-    fn handle_downlink_macs<'b>(
+    fn handle_downlink_macs(
         &mut self,
         device: &mut D,
-        cmds: MacCommandIterator<'_, DownlinkMacCommand<'b>>,
-    ) -> Result<(), Error> {
+        cmds: MacCommandIterator<'_, DownlinkMacCommand<'_>>,
+    ) -> Result<(), Error<D>> {
         self.cmds.clear();
         let mut channel_mask = self.status.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
@@ -355,7 +347,7 @@ where
                     let new_data_rate: Result<Option<DR>, ()> = if payload.data_rate() == 0xF {
                         Ok(self.status.tx_data_rate)
                     } else {
-                        DR::try_from(payload.data_rate()).map(|dr| Some(dr))
+                        DR::try_from(payload.data_rate()).map(Some)
                     };
                     ans.set_tx_power_ack(new_tx_power.is_ok());
                     ans.set_data_rate_ack(new_data_rate.is_ok());
@@ -370,19 +362,24 @@ where
                     match cmd_iter.peek() {
                         Some(DownlinkMacCommand::LinkADRReq(_)) => (),
                         _ => {
-                            if new_tx_power.is_ok()
-                                && new_data_rate.is_ok()
-                                && channel_mask_res.is_ok()
-                            {
-                                if let Ok(_) =
-                                    self.status.channel_plan.set_channel_mask(channel_mask)
-                                {
-                                    self.status.tx_power = new_tx_power.unwrap();
-                                    self.status.tx_data_rate = new_data_rate.unwrap();
-                                    self.status.number_of_transmissions =
-                                        payload.redundancy().number_of_transmissions();
-                                    ans.set_channel_mask_ack(true);
-                                } else {
+                            match (new_tx_power, new_data_rate, channel_mask_res) {
+                                (Ok(new_tx_power), Ok(new_data_rate), Ok(_)) => {
+                                    if self
+                                        .status
+                                        .channel_plan
+                                        .set_channel_mask(channel_mask)
+                                        .is_ok()
+                                    {
+                                        self.status.tx_power = new_tx_power;
+                                        self.status.tx_data_rate = new_data_rate;
+                                        self.status.number_of_transmissions =
+                                            payload.redundancy().number_of_transmissions();
+                                        ans.set_channel_mask_ack(true);
+                                    } else {
+                                        ans.set_channel_mask_ack(false);
+                                    }
+                                }
+                                _ => {
                                     ans.set_channel_mask_ack(false);
                                 }
                             }
@@ -478,11 +475,11 @@ where
                         .channel_plan
                         .check_uplink_frequency_exists(payload.channel_index() as usize);
                     if channel_frequency_ack {
-                        channel_frequency_ack =
-                            match self.status.channel_plan.handle_dl_channel_req(payload) {
-                                Ok(_) => true,
-                                Err(_) => false,
-                            }
+                        channel_frequency_ack = self
+                            .status
+                            .channel_plan
+                            .handle_dl_channel_req(payload)
+                            .is_ok()
                     }
                     ans.set_uplink_frequency_exists_ack(uplink_frequency_exists_ack);
                     ans.set_channel_frequency_ack(channel_frequency_ack);
@@ -510,8 +507,10 @@ where
         }
         Ok(())
     }
-    fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error> {
-        self.cmds.push(cmd).map_err(|_| Error::FOptsFull)
+    fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error<D>> {
+        self.cmds
+            .push(cmd)
+            .map_err(|_| Error::Mac(crate::mac::Error::FOptsFull))
     }
 
     async fn rx_with_timeout<'m>(
@@ -521,7 +520,7 @@ where
         radio_buffer: &'m mut RadioBuffer<256>,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> Result<Option<(usize, RxQuality)>, Error> {
+    ) -> Result<Option<(usize, RxQuality)>, Error<D>> {
         let windows = self.get_rx_windows(frame);
         let mut window = Window::_1;
 
@@ -530,7 +529,11 @@ where
         loop {
             let rf_config = self.create_rf_config(&frame, &window, data_rate, channel)?;
             device.timer().reset();
-            device.timer().at(windows.get_open(&window) as u64).await;
+            device
+                .timer()
+                .at(windows.get_open(&window) as u64)
+                .await
+                .map_err(|e| Error::Device(crate::device::Error::Timer(e)))?;
             let timeout_fut = device.timer().at(windows.get_close(&window) as u64);
             let rx_fut = device.radio().rx(rf_config, radio_buffer.as_mut());
             pin_mut!(rx_fut);
@@ -547,9 +550,11 @@ where
                     Err(e) => {
                         if let Window::_1 = window {
                             window = Window::_2;
-                            close_at.await
+                            close_at
+                                .await
+                                .map_err(|e| Error::Device(crate::device::Error::Timer(e)))?;
                         } else {
-                            return Err(Error::Device(device::Error::Radio));
+                            return Err(Error::Device(crate::device::Error::Radio(e)));
                         }
                     }
                 },
@@ -573,12 +578,12 @@ where
         confirmed: bool,
         radio_buffer: &mut RadioBuffer<256>,
         factory: CRYPTO,
-    ) -> Result<u32, Error> {
+    ) -> Result<u32, Error<D>> {
         if let Some(session) = self.session {
             // check if FCnt is used up
             if session.fcnt_up() == (0xFFFF + 1) {
                 // signal that the session is expired
-                return Err(Error::SessionExpired);
+                return Err(Error::Mac(crate::mac::Error::SessionExpired));
             }
             let fcnt = session.fcnt_up();
             let mut phy: DataPayloadCreator<GenericArray<u8, U256>, CRYPTO> =
@@ -603,17 +608,15 @@ where
                     panic!("dyn_cmds too small compared to cmds")
                 }
             }
+            let packet = phy
+                .build(data, &dyn_cmds, session.newskey(), session.appskey())
+                .map_err(|e| Error::Encoding(e))?;
 
-            match phy.build(data, &dyn_cmds, session.newskey(), session.appskey()) {
-                Ok(packet) => {
-                    radio_buffer.clear();
-                    radio_buffer.extend_from_slice(packet).unwrap();
-                    Ok(fcnt)
-                }
-                Err(e) => Err(Error::UnableToPreparePayload(e)),
-            }
+            radio_buffer.clear();
+            radio_buffer.extend_from_slice(packet).unwrap();
+            Ok(fcnt)
         } else {
-            Err(Error::NetworkNotJoined)
+            Err(Error::Mac(crate::mac::Error::NetworkNotJoined))
         }
     }
 }
@@ -621,10 +624,10 @@ where
 impl<'a, R, D, C> crate::mac::Mac<R, D> for Mac<'a, R, D, C>
 where
     R: region::Region + 'static,
-    D: Device,
+    D: Device + Debug,
     C: ChannelPlan<R> + Default + 'a,
 {
-    type Error = Error;
+    type Error = Error<D>;
     type JoinFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm where Self: 'm;
 
     fn join<'m>(
@@ -635,12 +638,15 @@ where
         self.create_join_request(radio_buffer);
 
         async move {
-            let random = device.rng().next_u32();
+            let random = device
+                .rng()
+                .next_u32()
+                .map_err(|e| Error::Device(crate::device::Error::Rng(e)))?;
             let channel = self
                 .status
                 .channel_plan
                 .get_random_channel(random, DR::_0)
-                .map_err(|_| Error::NoValidChannelFound)?;
+                .map_err(|_| Error::Mac(crate::mac::Error::NoValidChannelFound))?;
 
             let tx_config = self.create_tx_config(Frame::Join, R::default_data_rate(), &channel)?;
             // Transmit the join payload
@@ -648,16 +654,17 @@ where
                 .radio()
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
-                .map_err(|e| Error::Device(crate::device::Error::Radio))?;
+                .map_err(|e| Error::Device(crate::device::Error::Radio(e)))?;
             //device.timer().reset();
 
             // Receive join response within RX window
             self.rx_with_timeout(Frame::Join, device, radio_buffer, DR::_0, &channel)
-                .await
-                .map_err(|e| Self::Error::Device(crate::device::Error::Radio))?;
+                .await?;
 
-            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory) {
-                Ok(PhyPayload::JoinAccept(encrypted)) => {
+            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)
+                .map_err(Error::Encoding)?
+            {
+                PhyPayload::JoinAccept(encrypted) => {
                     let decrypt = DecryptedJoinAcceptPayload::new_from_encrypted(
                         encrypted,
                         &self.credentials.app_key,
@@ -673,10 +680,10 @@ where
                         self.session.replace(session);
                         Ok(())
                     } else {
-                        Err(Error::InvalidMic)
+                        Err(Error::Mac(crate::mac::Error::InvalidMic))
                     }
                 }
-                _ => Err(Error::UnableToDecodePayload("")),
+                _ => Err(Error::Mac(crate::mac::Error::InvalidPayloadType)),
             }
         }
     }
@@ -693,15 +700,18 @@ where
     ) -> Self::SendFuture<'m> {
         async move {
             if self.session.is_none() {
-                return Err(Error::NetworkNotJoined);
+                return Err(Error::Mac(crate::mac::Error::NetworkNotJoined));
             }
-            let random = device.rng().next_u32();
+            let random = device
+                .rng()
+                .next_u32()
+                .map_err(|e| Error::Device(crate::device::Error::Rng(e)))?;
             let data_rate = self.status.tx_data_rate.unwrap_or(R::default_data_rate());
             let channel = self
                 .status
                 .channel_plan
                 .get_random_channel(random, data_rate)
-                .map_err(|_| Error::NoValidChannelFound)?;
+                .map_err(|_| Error::Mac(crate::mac::Error::NoValidChannelFound))?;
             //self.mac.handle_uplink_macs(macs);
             // Prepare transmission buffer
             let _ = self.prepare_buffer(data, fport, confirmed, radio_buffer, DefaultFactory)?;
@@ -713,14 +723,13 @@ where
                 .radio()
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
-                .map_err(|e| Error::Device(crate::device::Error::Radio))?;
+                .map_err(|e| Error::Device(crate::device::Error::Radio(e)))?;
 
             // Wait for received data within window
             device.timer().reset();
             let rx_res = self
                 .rx_with_timeout(Frame::Data, device, radio_buffer, data_rate, &channel)
-                .await
-                .map_err(|e| Error::Device(crate::device::Error::Radio))?;
+                .await?;
             if let Some((_len, rx_quality)) = rx_res {
                 self.status.rx_quality = Some(rx_quality);
             }
@@ -758,12 +767,12 @@ where
                                 if confirmed {
                                     self.status.confirm_next = true;
                                 }
-                                match decrypted.frm_payload() {
-                                    Ok(FRMPayload::MACCommands(mac_cmds)) => {
+                                match decrypted.frm_payload().map_err(Error::Encoding)? {
+                                    FRMPayload::MACCommands(mac_cmds) => {
                                         self.handle_downlink_macs(device, (&mac_cmds).into())?;
                                         Ok(0)
                                     }
-                                    Ok(FRMPayload::Data(rx_data)) => {
+                                    FRMPayload::Data(rx_data) => {
                                         if let Some(rx) = rx {
                                             let to_copy = core::cmp::min(rx.len(), rx_data.len());
                                             rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
@@ -772,21 +781,20 @@ where
                                             Ok(0)
                                         }
                                     }
-                                    Ok(FRMPayload::None) => Ok(0),
-                                    Err(_) => Err(Error::UnableToDecodePayload("")),
+                                    FRMPayload::None => Ok(0),
                                 }
                             } else {
-                                Err(Error::InvalidMic)
+                                Err(Error::Mac(crate::mac::Error::InvalidMic))
                             }
                         } else {
-                            Err(Error::InvalidDevAddr)
+                            Err(Error::Mac(crate::mac::Error::InvalidDevAddr))
                         }
                     }
-                    Ok(_) => Err(Error::UnableToDecodePayload("")),
-                    Err(e) => Err(Error::UnableToDecodePayload(e)),
+                    Ok(_) => Err(Error::Mac(crate::mac::Error::InvalidPayloadType)),
+                    Err(e) => Err(Error::Encoding(e)),
                 }
             } else {
-                Err(Error::NetworkNotJoined)
+                Err(Error::Mac(crate::mac::Error::NetworkNotJoined))
             }
         }
     }

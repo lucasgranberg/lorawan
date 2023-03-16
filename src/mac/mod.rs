@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use futures::Future;
 
 use crate::{
@@ -8,7 +9,17 @@ use crate::{
 use self::mac_1_0_4::region::Region;
 
 pub mod mac_1_0_4;
-
+#[derive(Debug)]
+pub enum Error {
+    UnsupportedDataRate,
+    InvalidMic,
+    InvalidDevAddr,
+    InvalidPayloadType,
+    NetworkNotJoined,
+    SessionExpired,
+    FOptsFull,
+    NoValidChannelFound,
+}
 pub trait Mac<R, D>
 where
     R: Region,

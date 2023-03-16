@@ -3,28 +3,27 @@
 #![feature(type_alias_impl_trait)]
 #![feature(concat_idents)]
 
+use core::fmt::Debug;
+
 use channel_mask::ChannelMask;
+use device::Device;
 use frequency::Frequency;
+use mac::mac_1_0_4::region;
 
 pub mod channel_mask;
 pub mod device;
 pub mod encoding;
 pub mod frequency;
 pub mod mac;
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum Error {
-    //<RadioError> {
-    Device(device::Error),
-    UnsupportedDataRate,
-    InvalidMic,
-    InvalidDevAddr,
-    UnableToDecodePayload(&'static str),
-    NetworkNotJoined,
-    SessionExpired,
-    FOptsFull,
-    UnableToPreparePayload(&'static str),
-    NoValidChannelFound,
+#[derive(Debug)]
+pub enum Error<D>
+where
+    D: Device + Debug,
+{
+    Device(device::Error<D>),
+    Region(region::Error),
+    Mac(mac::Error),
+    Encoding(encoding::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

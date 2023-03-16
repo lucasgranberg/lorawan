@@ -1,5 +1,6 @@
+use super::Error;
+use core::convert::Infallible;
 use core::marker::PhantomData;
-
 /// Calculates the len in bytes of a sequence of mac commands, including th CIDs.
 pub fn mac_commands_len(cmds: &[&dyn SerializableMacCommand]) -> usize {
     cmds.iter().map(|mc| mc.payload_len() + 1).sum()
@@ -18,7 +19,7 @@ macro_rules! mac_cmd_zero_len {
             pub struct $type();
 
             impl $type {
-                pub fn new(_: &[u8]) -> Result<$type, &str> {
+                pub fn new(_: &[u8]) -> Result<$type, Infallible> {
                     Ok($type())
                 }
 
@@ -55,9 +56,9 @@ macro_rules! mac_cmds {
 
             impl<'a> $type<'a> {
                 /// Creates a new instance of the mac command if there is enought data.
-                pub fn new<'b>(data: &'a [u8]) -> Result<$type<'a>, &'b str> {
+                pub fn new<'b>(data: &'a [u8]) -> Result<$type<'a>, Error> {
                     if data.len() < $size {
-                        Err("incorrect size for")
+                        Err(Error::IncorrectSizeForMacCommand)
                     } else {
                         Ok($type(&data))
                     }
@@ -594,16 +595,16 @@ impl DataRateRange {
     }
 
     /// Constructs a new DataRateRange from the provided byte.
-    pub fn new(byte: u8) -> Result<DataRateRange, &'static str> {
+    pub fn new(byte: u8) -> Result<DataRateRange, Error> {
         Self::can_build_from(byte)?;
 
         Ok(Self::new_from_raw(byte))
     }
 
     /// Check if the byte can be used to create DataRateRange.
-    pub fn can_build_from(byte: u8) -> Result<(), &'static str> {
+    pub fn can_build_from(byte: u8) -> Result<(), Error> {
         if (byte >> 4) < (byte & 0x0f) {
-            return Err("data rate range can not have max data rate smaller than min data rate");
+            return Err(Error::InvalidDataRange);
         }
         Ok(())
     }

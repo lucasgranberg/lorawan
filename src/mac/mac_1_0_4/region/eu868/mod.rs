@@ -1,3 +1,4 @@
+use super::Error;
 use crate::{
     device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor},
     DR,
@@ -48,37 +49,37 @@ impl crate::mac::Region for Eu868 {
         DR::_0
     }
 
-    fn convert_data_rate(dr: DR) -> Option<Datarate> {
+    fn convert_data_rate(dr: DR) -> Result<Datarate, super::Error> {
         match dr {
-            DR::_0 => Some(Datarate {
+            DR::_0 => Ok(Datarate {
                 spreading_factor: SpreadingFactor::_12,
                 bandwidth: Bandwidth::_125KHz,
             }),
-            DR::_1 => Some(Datarate {
+            DR::_1 => Ok(Datarate {
                 spreading_factor: SpreadingFactor::_11,
                 bandwidth: Bandwidth::_125KHz,
             }),
-            DR::_2 => Some(Datarate {
+            DR::_2 => Ok(Datarate {
                 spreading_factor: SpreadingFactor::_10,
                 bandwidth: Bandwidth::_125KHz,
             }),
-            DR::_3 => Some(Datarate {
+            DR::_3 => Ok(Datarate {
                 spreading_factor: SpreadingFactor::_9,
                 bandwidth: Bandwidth::_125KHz,
             }),
-            DR::_4 => Some(Datarate {
+            DR::_4 => Ok(Datarate {
                 spreading_factor: SpreadingFactor::_8,
                 bandwidth: Bandwidth::_125KHz,
             }),
-            DR::_5 => Some(Datarate {
+            DR::_5 => Ok(Datarate {
                 spreading_factor: SpreadingFactor::_7,
                 bandwidth: Bandwidth::_125KHz,
             }),
-            DR::_6 => Some(Datarate {
+            DR::_6 => Ok(Datarate {
                 spreading_factor: SpreadingFactor::_7,
                 bandwidth: Bandwidth::_250KHz,
             }),
-            _ => None,
+            _ => Err(super::Error::DataRateNotSupported),
         }
     }
     fn default_coding_rate() -> CodingRate {
@@ -91,11 +92,11 @@ impl crate::mac::Region for Eu868 {
         false
     }
 
-    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, ()> {
+    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, Error> {
         match tx_power {
             0..=7 => Ok(Some(max_eirp - (tx_power * 2) as i8)),
             15 => Ok(cur_dbm),
-            _ => Err(()),
+            _ => Err(Error::InvalidTxPower),
         }
     }
 

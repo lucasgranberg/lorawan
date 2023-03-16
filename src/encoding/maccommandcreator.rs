@@ -1,7 +1,8 @@
+use core::convert::Infallible;
+
 use crate::{channel_mask::ChannelMask, frequency::Frequency};
 
-use super::maccommands::*;
-
+use super::{maccommands::*, Error};
 macro_rules! impl_mac_cmd_creator_boilerplate {
     ($type:ident, $cid:expr) => {
         impl Default for $type {
@@ -10,6 +11,7 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
             }
         }
 
+        #[allow(clippy::len_without_is_empty)]
         impl $type {
             /// Creates a new instance of the class.
             pub fn new() -> Self {
@@ -40,7 +42,7 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
                 Self { data }
             }
         }
-
+        #[allow(clippy::len_without_is_empty)]
         impl $type {
             /// Creates a new instance of the class.
             pub fn new() -> Self {
@@ -227,9 +229,9 @@ impl LinkADRReqCreator {
     /// # Argument
     ///
     /// * data_rate - data rate index of the ADR request. The value must be between 0 and 15.
-    pub fn set_data_rate(&mut self, data_rate: u8) -> Result<&mut Self, &str> {
+    pub fn set_data_rate(&mut self, data_rate: u8) -> Result<&mut Self, Error> {
         if data_rate > 0x0f {
-            return Err("data_rate out of range");
+            return Err(Error::DataRateOutOfRange);
         }
         self.data[1] &= 0x0f;
         self.data[1] |= data_rate << 4;
@@ -242,9 +244,9 @@ impl LinkADRReqCreator {
     /// # Argument
     ///
     /// * tx_power - TX power index. The value must be between 0 and 15.
-    pub fn set_tx_power(&mut self, tx_power: u8) -> Result<&mut Self, &str> {
+    pub fn set_tx_power(&mut self, tx_power: u8) -> Result<&mut Self, Error> {
         if tx_power > 0x0f {
-            return Err("tx_power out of range");
+            return Err(Error::TxPowerOutOfRange);
         }
         self.data[1] &= 0xf0;
         self.data[1] |= tx_power & 0x0f;
@@ -361,7 +363,7 @@ impl DutyCycleReqCreator {
     ///
     /// * max_duty_cycle - the value used to determine the aggregated duty cycle using the formula
     /// `1 / (2 ** max_duty_cycle)`.
-    pub fn set_max_duty_cycle(&mut self, max_duty_cycle: u8) -> Result<&mut Self, &str> {
+    pub fn set_max_duty_cycle(&mut self, max_duty_cycle: u8) -> Result<&mut Self, Infallible> {
         self.data[1] = max_duty_cycle;
 
         Ok(self)
@@ -420,7 +422,7 @@ impl RXParamSetupReqCreator {
     ///
     /// * frequency - instance of maccommands::Frequency or anything that can be converted
     /// into it.
-    pub fn set_frequency<'a, T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
+    pub fn set_frequency<T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
         let converted = frequency.into();
         self.data[2..5].copy_from_slice(converted.as_ref());
 
@@ -532,9 +534,9 @@ impl DevStatusAnsCreator {
     /// # Argument
     ///
     /// * margin - the value to be used as margin.
-    pub fn set_margin(&mut self, margin: i8) -> Result<&mut Self, &str> {
+    pub fn set_margin(&mut self, margin: i8) -> Result<&mut Self, Error> {
         if !(-32..=31).contains(&margin) {
-            return Err("margin out of range");
+            return Err(Error::MarginOutOfRange);
         }
         self.data[2] = ((margin << 2) as u8) >> 2;
 
@@ -579,7 +581,7 @@ impl NewChannelReqCreator {
     ///
     /// * frequency - instance of maccommands::Frequency or anything that can be converted
     /// into it.
-    pub fn set_frequency<'a, T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
+    pub fn set_frequency<T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
         let converted = frequency.into();
         self.data[2..5].copy_from_slice(converted.as_ref());
 
@@ -664,9 +666,9 @@ impl RXTimingSetupReqCreator {
     /// # Argument
     ///
     /// * delay - the value to be used as delay.
-    pub fn set_delay(&mut self, delay: u8) -> Result<&mut Self, &str> {
+    pub fn set_delay(&mut self, delay: u8) -> Result<&mut Self, Error> {
         if delay > 0x0f {
-            return Err("delay out of range");
+            return Err(Error::DelayOutOfRange);
         }
         self.data[1] &= 0xf0;
         self.data[1] |= delay;
@@ -744,10 +746,10 @@ impl_mac_cmd_creator_boilerplate!(DeviceTimeAnsCreator, 0x0D, 5);
 pub fn build_mac_commands<T: AsMut<[u8]>>(
     cmds: &[&dyn SerializableMacCommand],
     mut out: T,
-) -> Result<usize, &'static str> {
+) -> Result<usize, Error> {
     let res = out.as_mut();
     if mac_commands_len(cmds) > res.len() {
-        return Err("failed to serialize mac commands in provided buffer: too small");
+        return Err(Error::BufferTooSmall);
     }
     let mut i = 0;
     for mc in cmds {

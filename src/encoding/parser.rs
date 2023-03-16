@@ -3,6 +3,7 @@ use crate::MType;
 use super::keys::{CryptoFactory, AES128, MIC};
 //use super::maccommands::{parse_mac_commands, MacCommandIterator};
 use super::securityhelpers;
+use super::Error;
 
 #[cfg(feature = "default-crypto")]
 use super::default_crypto::DefaultFactory;
@@ -167,9 +168,9 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> JoinRequestPayload<T, F> {
     /// let phy = lorawan::parser::JoinRequestPayload::new_with_factory(data,
     ///     lorawan::default_crypto::DefaultFactory);
     /// ```
-    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, &'a str> {
+    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, Error> {
         if !Self::can_build_from(data.as_ref()) {
-            Err("can not build JoinRequestPayload from the provided data")
+            Err(Error::InvalidDataForJoinRequest)
         } else {
             Ok(Self(data, factory))
         }
@@ -225,11 +226,11 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> EncryptedJoinAcceptPayload<
     ///
     /// * data - the bytes for the payload.
     /// * factory - the factory that shall be used to create object for crypto functions.
-    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, &'a str> {
+    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, Error> {
         if Self::can_build_from(data.as_ref()) {
             Ok(Self(data, factory))
         } else {
-            Err("can not build EncryptedJoinAcceptPayload from the provided data")
+            Err(Error::InvalidDataForEncryptedJoinAcceptPayload)
         }
     }
 
@@ -257,19 +258,13 @@ pub trait DataHeader {
     /// Gives whether the frame is confirmed
     fn is_confirmed(&self) -> bool {
         let mtype = MHDR(self.as_data_bytes()[0]).mtype();
-        match mtype {
-            MType::ConfirmedDataUp | MType::ConfirmedDataDown => true,
-            _ => false,
-        }
+        matches!(mtype, MType::ConfirmedDataUp | MType::ConfirmedDataDown)
     }
 
     /// Gives whether the payload is uplink or not.
     fn is_uplink(&self) -> bool {
         let mtype = MHDR(self.as_data_bytes()[0]).mtype();
-        match mtype {
-            MType::UnconfirmedDataUp | MType::ConfirmedDataUp => true,
-            _ => false,
-        }
+        matches!(mtype, MType::UnconfirmedDataUp | MType::ConfirmedDataUp)
     }
 
     /// Gives the FPort of the DataPayload if there is one.
@@ -318,11 +313,11 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> EncryptedDataPayload<T, F> {
     ///
     /// * data - the bytes for the payload.
     /// * factory - the factory that shall be used to create object for crypto functions.
-    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, &'a str> {
+    pub fn new_with_factory<'a>(data: T, factory: F) -> Result<Self, Error> {
         if Self::can_build_from(data.as_ref()) {
             Ok(Self(data, factory))
         } else {
-            Err("can not build EncryptedDataPayload from the provided data")
+            Err(Error::InvalidDataForEncryptedDataPayload)
         }
     }
 
@@ -374,7 +369,7 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> EncryptedDataPayload<T, F> {
 #[cfg(feature = "default-crypto")]
 pub fn parse<'a, T: AsRef<[u8]> + AsMut<[u8]>>(
     data: T,
-) -> Result<PhyPayload<T, DefaultFactory>, &'a str> {
+) -> Result<PhyPayload<T, DefaultFactory>, Error> {
     parse_with_factory(data, DefaultFactory)
 }
 
@@ -388,7 +383,7 @@ pub fn parse<'a, T: AsRef<[u8]> + AsMut<[u8]>>(
 ///
 /// * bytes - the data from which the PhyPayload is to be built.
 /// * factory - the factory that shall be used to create object for crypto functions.
-pub fn parse_with_factory<T, F>(data: T, factory: F) -> Result<PhyPayload<T, F>, &'static str>
+pub fn parse_with_factory<T, F>(data: T, factory: F) -> Result<PhyPayload<T, F>, Error>
 where
     T: AsRef<[u8]> + AsMut<[u8]>,
     F: CryptoFactory,
@@ -408,23 +403,23 @@ where
         | MType::ConfirmedDataDown => Ok(PhyPayload::Data(EncryptedDataPayload::new_with_factory(
             data, factory,
         )?)),
-        _ => Err("unsupported message type"),
+        _ => Err(Error::UnsupportedMessageType),
     }
 }
 
-fn check_phy_data(bytes: &[u8]) -> Result<(), &'static str> {
+fn check_phy_data(bytes: &[u8]) -> Result<(), Error> {
     let len = bytes.len();
     if len == 0 {
-        return Err("can not parse empty payload as LoRaWAN phy payload");
+        return Err(Error::PhyDataEmpty);
     }
     let mhdr = MHDR(bytes[0]);
     if mhdr.major() != Major::LoRaWANR1 {
-        return Err("Unsupported major version");
+        return Err(Error::UnsupportedMajorVersion);
     }
     // the smallest payload is a data payload without fport and FRMPayload
     // which is 12 bytes long.
     if len < 12 {
-        Err("insufficient number of bytes")
+        Err(Error::InsufficeientNumberOfBytes)
     } else {
         Ok(())
     }

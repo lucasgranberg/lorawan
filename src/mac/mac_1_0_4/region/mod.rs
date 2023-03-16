@@ -5,6 +5,11 @@ use crate::{
 
 pub mod channel_plan;
 
+#[derive(Debug)]
+pub enum Error {
+    InvalidTxPower,
+    DataRateNotSupported,
+}
 pub trait Region {
     fn default_channels() -> u8;
     fn mandatory_frequencies() -> &'static [u32];
@@ -19,10 +24,10 @@ pub trait Region {
     fn max_eirp() -> i8;
     fn min_frequency() -> u32;
     fn max_frequency() -> u32;
-    fn convert_data_rate(dr: DR) -> Option<Datarate>;
+    fn convert_data_rate(dr: DR) -> Result<Datarate, Error>;
     fn get_receive_window(rx_dr_offset: DR, downstream_dr: DR) -> DR;
     fn supports_tx_param_setup() -> bool;
-    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, ()>;
+    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, Error>;
 
     fn default_receive_delay1() -> u32 {
         1000

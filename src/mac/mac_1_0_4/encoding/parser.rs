@@ -6,7 +6,7 @@ use crate::{
         keys::{CryptoFactory, Encrypter, AES128, MIC},
         maccommands::DLSettings,
         parser::*,
-        securityhelpers,
+        securityhelpers, Error,
     },
     frequency::Frequency,
     CfList,
@@ -254,7 +254,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> DecryptedDataPayload<T> {
     }
     /// Returns FRMPayload that can represent either application payload or mac commands if fport
     /// is 0.
-    pub fn frm_payload(&self) -> Result<FRMPayload, &str> {
+    pub fn frm_payload(&self) -> Result<FRMPayload, Error> {
         let data = self.as_data_bytes();
         let len = data.len();
         let fhdr_length = self.fhdr_length();

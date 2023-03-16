@@ -20,7 +20,7 @@ where
 {
     type Channel: Channel;
     fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>>;
-    fn get_random_channel<'m>(&'m self, random: u32, data_rate: DR) -> Result<Self::Channel, ()>;
+    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<Self::Channel, ()>;
     fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), ()>;
     fn check_uplink_frequency_exists(&self, index: usize) -> bool;
     fn handle_channel_mask(
@@ -112,7 +112,7 @@ where
         self.channels.get_mut(index)
     }
 
-    fn get_random_channel<'m>(&'m self, random: u32, data_rate: DR) -> Result<DynamicChannel, ()> {
+    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<DynamicChannel, ()> {
         let mut valid_channels: Vec<&DynamicChannel, N> = Vec::new();
         for valid_channel in self
             .channels
@@ -121,7 +121,7 @@ where
             .filter_map(|(index, c)| match c {
                 Some(ch)
                     if (ch.min_data_rate..ch.max_data_rate).contains(&(data_rate as u8))
-                        && self.mask[index] == true =>
+                        && self.mask[index] =>
                 {
                     Some(ch)
                 }
@@ -130,13 +130,13 @@ where
         {
             valid_channels.push(valid_channel).unwrap();
         }
-        if valid_channels.len() == 0 {
+        if valid_channels.is_empty() {
             Err(())
         } else {
-            Ok(*valid_channels
+            Ok(*&(*valid_channels
                 .get((random % valid_channels.len() as u32) as usize)
-                .unwrap()
-                .clone())
+                .unwrap())
+            .clone())
         }
     }
 
@@ -166,7 +166,7 @@ where
     }
 
     fn get_channel_mask(&self) -> [bool; 80] {
-        self.mask.clone()
+        self.mask
     }
 
     fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), ()> {

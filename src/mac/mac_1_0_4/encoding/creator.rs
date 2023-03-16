@@ -15,7 +15,7 @@ use crate::encoding::{
     maccommandcreator::build_mac_commands,
     maccommands::{mac_commands_len, SerializableMacCommand},
     parser::{DevAddr, DevNonce, FCtrl, EUI64},
-    securityhelpers,
+    securityhelpers, Error,
 };
 
 #[cfg(feature = "with-downlink")]
@@ -241,10 +241,10 @@ pub struct JoinRequestCreator<D, F> {
 
 impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
     /// Creates a well initialized JoinRequestCreator with specific crypto functions.
-    pub fn with_options<'a>(mut data: D, factory: F) -> Result<Self, &'a str> {
+    pub fn with_options<'a>(mut data: D, factory: F) -> Result<Self, Error> {
         let d = data.as_mut();
         if d.len() < 23 {
-            return Err("data slice is too short");
+            return Err(Error::BufferTooSmall);
         }
         d[0] = 0x00;
         Ok(Self { data, factory })
@@ -298,7 +298,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
     /// # Argument
     ///
     /// * key - the key to be used for setting the MIC.
-    pub fn build(&mut self, key: &keys::AES128) -> Result<&[u8], &str> {
+    pub fn build(&mut self, key: &keys::AES128) -> Result<&[u8], Error> {
         let d = self.data.as_mut();
         set_mic(d, key, &self.factory);
         Ok(d)
@@ -475,7 +475,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> DataPayloadCreator<D, F> {
         cmds: &[&dyn SerializableMacCommand],
         nwk_skey: &keys::AES128,
         app_skey: &keys::AES128,
-    ) -> Result<&[u8], &'static str> {
+    ) -> Result<&[u8], Error> {
         let d = self.data.as_mut();
         let mut last_filled = 8; // MHDR + FHDR without the FOpts
         let has_fport = self.data_f_port.is_some();
@@ -484,16 +484,16 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> DataPayloadCreator<D, F> {
 
         // Set MAC Commands
         if mac_cmds_len > PIGGYBACK_MAC_COMMANDS_MAX_LEN && !has_fport_zero {
-            return Err("mac commands are too big for FOpts");
+            return Err(Error::MacCommandTooBigForFOpts);
         }
 
         // Set FPort
         let mut payload_len = payload.len();
         if has_fport_zero && payload_len > 0 {
-            return Err("mac commands in payload can not be send together with payload");
+            return Err(Error::DataAndMacCommandsInPayloadNotAllowed);
         }
         if !has_fport && payload_len > 0 {
-            return Err("fport must be provided when there is FRMPayload");
+            return Err(Error::FRMPayloadWithFportZero);
         }
         // Set FOptsLen if present
         if !has_fport_zero && mac_cmds_len > 0 {
