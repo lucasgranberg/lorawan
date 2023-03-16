@@ -5,9 +5,6 @@ use super::keys::{CryptoFactory, AES128, MIC};
 use super::securityhelpers;
 use super::Error;
 
-#[cfg(feature = "default-crypto")]
-use super::default_crypto::DefaultFactory;
-
 macro_rules! fixed_len_struct {
     (
         $(#[$outer:meta])*
@@ -347,30 +344,6 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> EncryptedDataPayload<T, F> {
         let d = self.0.as_ref();
         securityhelpers::calculate_data_mic(&d[..d.len() - 4], self.1.new_mac(key), fcnt)
     }
-}
-
-/// Parses a payload as LoRaWAN physical payload.
-///
-/// # Argument
-///
-/// * bytes - the data from which the PhyPayload is to be built.
-///
-/// # Examples
-///
-/// ```
-/// let mut data = vec![0x40, 0x04, 0x03, 0x02, 0x01, 0x80, 0x01, 0x00, 0x01,
-///     0xa6, 0x94, 0x64, 0x26, 0x15, 0xd6, 0xc3, 0xb5, 0x82];
-/// if let Ok(lorawan::parser::PhyPayload::Data(phy)) = lorawan::parser::parse(data) {
-///     println!("{:?}", phy);
-/// } else {
-///     panic!("failed to parse data payload");
-/// }
-/// ```
-#[cfg(feature = "default-crypto")]
-pub fn parse<'a, T: AsRef<[u8]> + AsMut<[u8]>>(
-    data: T,
-) -> Result<PhyPayload<T, DefaultFactory>, Error> {
-    parse_with_factory(data, DefaultFactory)
 }
 
 /// Parses a payload as LoRaWAN physical payload.
