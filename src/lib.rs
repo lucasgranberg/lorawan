@@ -16,9 +16,10 @@ pub mod encoding;
 pub mod frequency;
 pub mod mac;
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error<D>
 where
-    D: Device + Debug,
+    D: Device,
 {
     Device(device::Error<D>),
     Region(region::Error),

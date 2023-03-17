@@ -1,6 +1,5 @@
 use core::{
     cmp::{max, min},
-    fmt::Debug,
     future::Future,
     marker::PhantomData,
 };
@@ -169,7 +168,7 @@ where
 impl<'a, R, D, C> Mac<'a, R, D, C>
 where
     R: region::Region,
-    D: Device + Debug,
+    D: Device,
     C: ChannelPlan<R> + Default,
 {
     pub fn new(
@@ -612,7 +611,7 @@ where
             }
             let packet = phy
                 .build(data, &dyn_cmds, session.newskey(), session.appskey())
-                .map_err(|e| Error::Encoding(e))?;
+                .map_err(Error::Encoding)?;
 
             radio_buffer.clear();
             radio_buffer.extend_from_slice(packet).unwrap();
@@ -626,7 +625,7 @@ where
 impl<'a, R, D, C> crate::mac::Mac<R, D> for Mac<'a, R, D, C>
 where
     R: region::Region + 'static,
-    D: Device + Debug,
+    D: Device,
     C: ChannelPlan<R> + Default + 'a,
 {
     type Error = Error<D>;
