@@ -15,6 +15,7 @@ pub mod device;
 pub mod encoding;
 pub mod frequency;
 pub mod mac;
+
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error<D>

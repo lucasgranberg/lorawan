@@ -532,9 +532,12 @@ where
             device
                 .timer()
                 .at(windows.get_open(&window) as u64)
-                .await
+                .map_err(|e| Error::Device(crate::device::Error::Timer(e)))?
+                .await;
+            let timeout_fut = device
+                .timer()
+                .at(windows.get_close(&window) as u64)
                 .map_err(|e| Error::Device(crate::device::Error::Timer(e)))?;
-            let timeout_fut = device.timer().at(windows.get_close(&window) as u64);
             let rx_fut = device.radio().rx(rf_config, radio_buffer.as_mut());
             pin_mut!(rx_fut);
             pin_mut!(timeout_fut);
@@ -550,9 +553,7 @@ where
                     Err(e) => {
                         if let Window::_1 = window {
                             window = Window::_2;
-                            close_at
-                                .await
-                                .map_err(|e| Error::Device(crate::device::Error::Timer(e)))?;
+                            close_at.await;
                         } else {
                             return Err(Error::Device(crate::device::Error::Radio(e)));
                         }
