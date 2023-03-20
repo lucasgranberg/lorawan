@@ -651,6 +651,7 @@ where
                 .map_err(|_| Error::Mac(crate::mac::Error::NoValidChannelFound))?;
 
             let tx_config = self.create_tx_config(Frame::Join, R::default_data_rate(), &channel)?;
+            defmt::trace!("tx config {:?}", tx_config);
             // Transmit the join payload
             let _ms = device
                 .radio()
@@ -734,6 +735,8 @@ where
                 .await?;
             if let Some((_len, rx_quality)) = rx_res {
                 self.status.rx_quality = Some(rx_quality);
+            } else {
+                return Ok(0);
             }
             // Handle received data
             if let Some(ref mut session_data) = self.session {

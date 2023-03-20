@@ -62,7 +62,7 @@ where
         let mut channels = [None; N];
         for (index, frequency) in R::mandatory_frequencies().iter().enumerate() {
             channels[index] = Some(DynamicChannel {
-                frequency: Frequency::new_from_raw(&frequency.to_le_bytes()),
+                frequency: Frequency::new_from_value(frequency),
                 dl_frequency: None,
                 max_data_rate: R::max_data_rate_join_req() as u8,
                 min_data_rate: R::min_data_rate_join_req() as u8,

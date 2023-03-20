@@ -19,6 +19,13 @@ impl Frequency {
         Self(payload)
     }
 
+    pub fn new_from_value(value: &u32) -> Self {
+        let value = value / 100;
+        let data = value.to_le_bytes();
+        let payload = [data[0], data[1], data[2]];
+        Self(payload)
+    }
+
     /// Provides the decimal value in Hz of the frequency.
     pub fn value(&self) -> u32 {
         ((u32::from(self.0[2]) << 16) + (u32::from(self.0[1]) << 8) + u32::from(self.0[0])) * 100
