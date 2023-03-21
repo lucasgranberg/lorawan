@@ -12,7 +12,6 @@ macro_rules! fixed_len_struct {
     ) => {
         $(#[$outer])*
         #[derive(Debug, Eq)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct $type<T: AsRef<[u8]>>(T);
 
         impl<T: AsRef<[u8]>> $type<T> {

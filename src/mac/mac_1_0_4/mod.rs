@@ -22,6 +22,7 @@ use crate::{
         Radio,
     },
     device::{
+        credentials_store::CredentialsStore,
         radio::types::{CodingRate, RxQuality},
         radio_buffer::RadioBuffer,
         rng::Rng,
@@ -46,6 +47,7 @@ use crate::{
 use futures::{future::select, future::Either, pin_mut};
 use generic_array::{typenum::U256, GenericArray};
 use heapless::Vec;
+use serde::{Deserialize, Serialize};
 
 use super::RxWindows;
 mod encoding;
@@ -106,11 +108,18 @@ impl Session {
         self.fcnt_up += 1;
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Credentials {
     pub app_eui: [u8; 8],
     pub dev_eui: [u8; 8],
     pub app_key: AES128,
     pub dev_nonce: u16,
+}
+impl Credentials {
+    fn incr_dev_nonce(&mut self) {
+        self.dev_nonce += 1;
+    }
 }
 pub struct Status<C, R>
 where
@@ -204,10 +213,10 @@ where
     fn get_rx_windows(&self, frame: Frame) -> super::RxWindows {
         match frame {
             Frame::Join => RxWindows {
-                rx1_open: 1000,
-                rx1_close: 1900,
-                rx2_open: 2000,
-                rx2_close: 2900,
+                rx1_open: 3000,
+                rx1_close: 5900,
+                rx2_open: 6000,
+                rx2_close: 7000,
             },
             Frame::Data => RxWindows {
                 rx1_open: 1000,
@@ -528,6 +537,7 @@ where
 
         loop {
             let rf_config = self.create_rf_config(&frame, &window, data_rate, channel)?;
+            defmt::trace!("rf config {:?}", rf_config);
             device.timer().reset();
             device
                 .timer()
@@ -652,6 +662,11 @@ where
 
             let tx_config = self.create_tx_config(Frame::Join, R::default_data_rate(), &channel)?;
             defmt::trace!("tx config {:?}", tx_config);
+            self.credentials.incr_dev_nonce();
+            device
+                .credentials_store()
+                .save(self.credentials)
+                .map_err(|e| Error::Device(crate::device::Error::CredentialsStore(e)))?;
             // Transmit the join payload
             let _ms = device
                 .radio()

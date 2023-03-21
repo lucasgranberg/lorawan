@@ -9,4 +9,5 @@
     "--target",
     "thumbv7em-none-eabi"
   ],
+  "cmake.configureOnOpen": false,
 }
