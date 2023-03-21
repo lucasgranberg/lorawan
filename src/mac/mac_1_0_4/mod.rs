@@ -214,9 +214,9 @@ where
         match frame {
             Frame::Join => RxWindows {
                 rx1_open: 3000,
-                rx1_close: 5900,
-                rx2_open: 6000,
-                rx2_close: 7000,
+                rx1_close: 4900,
+                rx2_open: 5900,
+                rx2_close: 9000,
             },
             Frame::Data => RxWindows {
                 rx1_open: 1000,
@@ -538,7 +538,6 @@ where
         loop {
             let rf_config = self.create_rf_config(&frame, &window, data_rate, channel)?;
             defmt::trace!("rf config {:?}", rf_config);
-            device.timer().reset();
             device
                 .timer()
                 .at(windows.get_open(&window) as u64)
@@ -548,7 +547,7 @@ where
                 .timer()
                 .at(windows.get_close(&window) as u64)
                 .map_err(|e| Error::Device(crate::device::Error::Timer(e)))?;
-            let rx_fut = device.radio().rx(rf_config, radio_buffer.as_mut());
+            let rx_fut = device.radio().rx(rf_config, radio_buffer.as_raw_slice());
             pin_mut!(rx_fut);
             pin_mut!(timeout_fut);
 
@@ -673,7 +672,7 @@ where
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
                 .map_err(|e| Error::Device(crate::device::Error::Radio(e)))?;
-            //device.timer().reset();
+            device.timer().reset();
 
             // Receive join response within RX window
             self.rx_with_timeout(Frame::Join, device, radio_buffer, DR::_0, &channel)
@@ -748,6 +747,7 @@ where
             let rx_res = self
                 .rx_with_timeout(Frame::Data, device, radio_buffer, data_rate, &channel)
                 .await?;
+            device.timer().reset();
             if let Some((_len, rx_quality)) = rx_res {
                 self.status.rx_quality = Some(rx_quality);
             } else {

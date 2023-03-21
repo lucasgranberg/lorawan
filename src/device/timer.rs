@@ -8,11 +8,9 @@ pub trait Timer: Sized {
     type Error: Debug;
     fn reset(&mut self);
 
-    type AtFuture: Future<Output = ()>;
+    type AtFuture<'m>: Future<Output = ()> + 'm
+    where
+        Self: 'm;
 
-    fn at(&mut self, millis: u64) -> Result<Self::AtFuture, Self::Error>;
-
-    // type DelayFuture: Future<Output = Result<(), Self::Error>>;
-    // /// Delay for millis milliseconds
-    // fn delay_ms(&mut self, millis: u64) -> Self::DelayFuture;
+    fn at<'a>(&self, millis: u64) -> Result<Self::AtFuture<'a>, Self::Error>;
 }
