@@ -298,8 +298,8 @@ where
         data_rate: DR,
         channel: &C::Channel,
     ) -> Result<RfConfig, Error<D>> {
-        let data_rate = match (frame, window) {
-            (Frame::Data, Window::_2) => R::convert_data_rate(
+        let data_rate = match window {
+            Window::_2 => R::convert_data_rate(
                 self.status
                     .rx2_data_rate
                     .unwrap_or(R::default_rx2_data_rate()),
@@ -314,7 +314,7 @@ where
                 data_rate,
             },
             (Frame::Join, Window::_2) => RfConfig {
-                frequency: channel.get_frequency().value(),
+                frequency: R::default_rx2_frequency(),
                 coding_rate: CodingRate::_4_5,
                 data_rate,
             },
