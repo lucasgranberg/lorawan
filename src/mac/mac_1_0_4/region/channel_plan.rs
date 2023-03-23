@@ -6,7 +6,7 @@ use crate::{
     channel_mask::ChannelMask,
     encoding::maccommands::{DlChannelReqPayload, NewChannelReqPayload},
     frequency::Frequency,
-    DR,
+    CfList, Frame, DR,
 };
 
 use super::{Error, Region};
@@ -20,7 +20,12 @@ where
 {
     type Channel: Channel;
     fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>>;
-    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<Self::Channel, Error>;
+    fn get_random_channel(
+        &self,
+        random: u32,
+        frame: Frame,
+        data_rate: DR,
+    ) -> Result<Self::Channel, Error>;
     fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), Error>;
     fn check_uplink_frequency_exists(&self, index: usize) -> bool;
     fn handle_channel_mask(
@@ -32,6 +37,7 @@ where
     fn get_channel_mask(&self) -> [bool; 80];
     fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), Error>;
     fn handle_dl_channel_req(&mut self, payload: DlChannelReqPayload) -> Result<(), Error>;
+    fn handle_cf_list(&mut self, cf_list: CfList) -> Result<(), Error>;
 }
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicChannel {
@@ -112,21 +118,30 @@ where
         self.channels.get_mut(index)
     }
 
-    fn get_random_channel(&self, random: u32, data_rate: DR) -> Result<DynamicChannel, Error> {
+    fn get_random_channel(
+        &self,
+        random: u32,
+        frame: Frame,
+        data_rate: DR,
+    ) -> Result<DynamicChannel, Error> {
         let mut valid_channels: Vec<&DynamicChannel, N> = Vec::new();
-        for valid_channel in self
-            .channels
-            .iter()
-            .enumerate()
-            .filter_map(|(index, c)| match c {
-                Some(ch)
-                    if (ch.min_data_rate..ch.max_data_rate).contains(&(data_rate as u8))
-                        && self.mask[index] =>
-                {
+        let channel_candidates = match frame {
+            Frame::Join => &self.channels[0..R::default_channels() as usize],
+            Frame::Data => &self.channels[..],
+        };
+        for valid_channel in
+            channel_candidates
+                .iter()
+                .enumerate()
+                .filter_map(|(index, c)| match c {
                     Some(ch)
-                }
-                _ => None,
-            })
+                        if (ch.min_data_rate..ch.max_data_rate).contains(&(data_rate as u8))
+                            && self.mask[index] =>
+                    {
+                        Some(ch)
+                    }
+                    _ => None,
+                })
         {
             valid_channels.push(valid_channel).unwrap();
         }
@@ -178,5 +193,21 @@ where
             return self.channels[index].is_some();
         }
         false
+    }
+
+    fn handle_cf_list(&mut self, cf_list: CfList) -> Result<(), Error> {
+        if let CfList::DynamicChannel(cf_list) = cf_list {
+            for (index, frequency) in cf_list.iter().enumerate() {
+                self.channels[R::default_channels() as usize + index] = Some(DynamicChannel {
+                    frequency: *frequency,
+                    dl_frequency: None,
+                    max_data_rate: R::max_data_rate() as u8,
+                    min_data_rate: R::min_data_rate() as u8,
+                })
+            }
+            Ok(())
+        } else {
+            Err(Error::InvalidCfListType)
+        }
     }
 }

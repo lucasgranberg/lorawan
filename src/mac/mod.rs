@@ -16,6 +16,7 @@ pub enum Error {
     InvalidMic,
     InvalidDevAddr,
     InvalidPayloadType,
+    NoResponse,
     NetworkNotJoined,
     SessionExpired,
     FOptsFull,

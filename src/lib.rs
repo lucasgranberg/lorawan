@@ -75,6 +75,7 @@ impl TryFrom<u8> for DR {
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CfList {
     DynamicChannel([Frequency; 5]),
     FixedChannel([ChannelMask; 4]),

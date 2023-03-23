@@ -1,6 +1,13 @@
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Frequency([u8; 3]);
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for Frequency {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "Frequency({})", self.value())
+    }
+}
+
 impl Frequency {
     /// Constructs a new ChannelMask from the provided data.
     pub fn new(data: &[u8]) -> Result<Self, &str> {

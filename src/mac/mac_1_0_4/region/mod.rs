@@ -13,6 +13,7 @@ pub enum Error {
     InvalidChannelMaskCtrl,
     DataRateNotSupported,
     NoValidChannelFound,
+    InvalidCfListType,
 }
 pub trait Region {
     fn default_channels() -> u8;
@@ -33,20 +34,17 @@ pub trait Region {
     fn supports_tx_param_setup() -> bool;
     fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, Error>;
 
-    fn default_receive_delay1() -> u32 {
+    fn default_rx_delay() -> u16 {
         1000
-    }
-    fn default_receive_delay2() -> u32 {
-        Self::default_receive_delay1() + 1
     }
     fn default_rx1_data_rate_offset() -> DR {
         DR::_0
     }
-    fn default_join_accept_delay1() -> u32 {
+    fn default_join_accept_delay1() -> u16 {
         5000
     }
-    fn default_join_accept_delay2() -> u32 {
-        Self::default_join_accept_delay1() + 1
+    fn default_join_accept_delay2() -> u16 {
+        Self::default_join_accept_delay1() + 1000
     }
     fn default_max_fcnt_gap() -> u32 {
         16384
