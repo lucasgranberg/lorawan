@@ -49,8 +49,8 @@ pub struct TxConfig {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Copy, Clone, Debug)]
 pub struct RxQuality {
-    rssi: i16,
-    snr: i8,
+    pub rssi: i16,
+    pub snr: i8,
 }
 
 impl RxQuality {

@@ -29,3 +29,20 @@ mac_cmds_enum! {
         DeviceTimeReq(DeviceTimeReqPayload)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_one_command() {
+        let data = [77, 251, 3, 224, 161, 0, 0, DevStatusReqPayload::cid()];
+        let fhdr: crate::encoding::parser::FHDR<'_> = crate::encoding::parser::FHDR(&data, true);
+        let mut iterator: MacCommandIterator<'_, DownlinkMacCommand> = (&fhdr).into();
+        assert_eq!(
+            iterator.next(),
+            Some(DownlinkMacCommand::DevStatusReq(DevStatusReqPayload()))
+        );
+        assert_eq!(iterator.next(), None)
+    }
+}

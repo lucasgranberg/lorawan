@@ -56,22 +56,6 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> DecryptedJoinAcceptPayload<
     /// * nwk_addr - the address of the network.
     /// * dev_nonce - the nonce from the device.
     /// * key - the app key.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let dev_nonce = vec![0xcc, 0xdd];
-    /// let data = vec![0x20, 0x49, 0x3e, 0xeb, 0x51, 0xfb, 0xa2, 0x11, 0x6f, 0x81, 0x0e, 0xdb, 0x37,
-    ///     0x42, 0x97, 0x51, 0x42];
-    /// let app_key = lorawan::keys::AES128([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
-    ///     0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
-    /// let join_accept = lorawan::parser::DecryptedJoinAcceptPayload::new(data, &app_key).unwrap();
-    ///
-    /// let nwk_skey = join_accept.derive_newskey(
-    ///     &lorawan::parser::DevNonce::new(&dev_nonce[..]).unwrap(),
-    ///     &app_key,
-    /// );
-    /// ```
     pub fn derive_newskey<TT: AsRef<[u8]>>(
         &self,
         dev_nonce: &DevNonce<TT>,
@@ -89,21 +73,6 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> DecryptedJoinAcceptPayload<
     /// * dev_nonce - the nonce from the device.
     /// * key - the app key.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// let dev_nonce = vec![0xcc, 0xdd];
-    /// let data = vec![0x20, 0x49, 0x3e, 0xeb, 0x51, 0xfb, 0xa2, 0x11, 0x6f, 0x81, 0x0e, 0xdb, 0x37,
-    ///     0x42, 0x97, 0x51, 0x42];
-    /// let app_key = lorawan::keys::AES128([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
-    ///     0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
-    /// let join_accept = lorawan::parser::DecryptedJoinAcceptPayload::new(data, &app_key).unwrap();
-    ///
-    /// let app_skey = join_accept.derive_appskey(
-    ///     &lorawan::parser::DevNonce::new(&dev_nonce[..]).unwrap(),
-    ///     &app_key,
-    /// );
-    /// ```
     pub fn derive_appskey<TT: AsRef<[u8]>>(
         &self,
         dev_nonce: &DevNonce<TT>,

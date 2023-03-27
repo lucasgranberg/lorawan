@@ -1,13 +1,11 @@
 {
   "editor.formatOnSave": true,
-  "rust-analyzer.checkOnSave": true,
-  "rust-analyzer.cargo.target": "thumbv7em-none-eabi",
-  "rust-analyzer.cargo.buildScripts.invocationLocation": "workspace",
-  "rust-analyzer.check.features": "all",
-  "rust-analyzer.check.allTargets": false,
-  "rust-analyzer.check.extraArgs": [
-    "--target",
-    "thumbv7em-none-eabi"
-  ],
-  "cmake.configureOnOpen": false,
+  "rust-analyzer.check.allTargets": true,
+  "rust-analyzer.procMacro.enable": true,
+  "rust-analyzer.imports.granularity.enforce": true,
+  "rust-analyzer.imports.granularity.group": "module",
+  "rust-analyzer.cargo.buildScripts.enable": true,
+  "rust-analyzer.procMacro.attributes.enable": false,
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.check.features": "all"
 }

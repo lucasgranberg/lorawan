@@ -150,7 +150,8 @@ macro_rules! mac_cmds_enum {
                 if self.index < self.data.len() {
                     let data = &self.data[self.index..];
                     $(
-                        if data[0] == $type::cid() && data.len() > $type::len() {
+                        if data[0] == $type::cid() && data.len() >= $type::len() {
+                            self.index = self.index + $type::len()+1;
                             Some($outer_type::$name($type::new(&data[1.. 1 + $type::len()]).unwrap()))
                         } else
                     )* {

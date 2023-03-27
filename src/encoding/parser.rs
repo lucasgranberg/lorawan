@@ -161,8 +161,8 @@ impl<T: AsRef<[u8]>, F: CryptoFactory> JoinRequestPayload<T, F> {
     /// ```
     /// let data = vec![0x00, 0x04, 0x03, 0x02, 0x01, 0x04, 0x03, 0x02, 0x01, 0x05, 0x04, 0x03,
     ///     0x02, 0x05, 0x04, 0x03, 0x02, 0x2d, 0x10, 0x6a, 0x99, 0x0e, 0x12];
-    /// let phy = lorawan::parser::JoinRequestPayload::new_with_factory(data,
-    ///     lorawan::default_crypto::DefaultFactory);
+    /// let phy = lorawan::encoding::parser::JoinRequestPayload::new_with_factory(data,
+    ///     lorawan::encoding::default_crypto::DefaultFactory);
     /// ```
     pub fn new_with_factory(data: T, factory: F) -> Result<Self, Error> {
         if !Self::can_build_from(data.as_ref()) {

@@ -51,7 +51,7 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use super::RxWindows;
-mod encoding;
+pub mod encoding;
 pub mod region;
 pub struct Session {
     newskey: AES128,
@@ -346,7 +346,6 @@ where
         device: &mut D,
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'_>>,
     ) -> Result<(), Error<D>> {
-        self.cmds.clear();
         let mut channel_mask = self.status.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
         while let Some(cmd) = cmd_iter.next() {
@@ -597,6 +596,9 @@ where
                 DataPayloadCreator::new(GenericArray::default(), factory);
 
             let mut fctrl = FCtrl(0x0, true);
+            if D::adaptive_data_rate_enabled() {
+                fctrl.set_adr();
+            }
 
             if self.status.confirm_next {
                 fctrl.set_ack();
@@ -822,6 +824,7 @@ where
                                     .unwrap();
 
                                     self.cmds.clear(); //clear cmd buffer
+                                    defmt::trace!("fhdr {:?}", decrypted.fhdr().0);
                                     self.handle_downlink_macs(device, (&decrypted.fhdr()).into())?;
 
                                     if confirmed {

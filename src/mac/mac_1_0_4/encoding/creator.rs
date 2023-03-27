@@ -39,7 +39,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
     ///
     /// # Argument
     ///
-    /// * app_eui - instance of lorawan::parser::EUI64 or anything that can
+    /// * app_eui - instance of lorawan::encoding::parser::EUI64 or anything that can
     ///   be converted into it.
     pub fn set_app_eui<H: AsRef<[u8]>, T: Into<EUI64<H>>>(&mut self, app_eui: T) -> &mut Self {
         let converted = app_eui.into();
@@ -52,7 +52,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
     ///
     /// # Argument
     ///
-    /// * dev_eui - instance of lorawan::parser::EUI64 or anything that can
+    /// * dev_eui - instance of lorawan::encoding::parser::EUI64 or anything that can
     ///   be converted into it.
     pub fn set_dev_eui<H: AsRef<[u8]>, T: Into<EUI64<H>>>(&mut self, dev_eui: T) -> &mut Self {
         let converted = dev_eui.into();
@@ -65,7 +65,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
     ///
     /// # Argument
     ///
-    /// * dev_nonce - instance of lorawan::parser::DevNonce or anything that can
+    /// * dev_nonce - instance of lorawan::encoding::parser::DevNonce or anything that can
     ///   be converted into it.
     pub fn set_dev_nonce<H: AsRef<[u8]>, T: Into<DevNonce<H>>>(
         &mut self,
@@ -92,21 +92,6 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> JoinRequestCreator<D, F> {
 
 /// DataPayloadCreator serves for creating binary representation of Physical
 /// Payload of DataUp or DataDown messages.
-///
-/// # Example
-///
-/// ```
-/// let mut phy = lorawan::creator::DataPayloadCreator::new();
-/// let nwk_skey = lorawan::keys::AES128([2; 16]);
-/// let app_skey = lorawan::keys::AES128([1; 16]);
-/// phy.set_confirmed(true)
-///     .set_uplink(true)
-///     .set_f_port(42)
-///     .set_dev_addr(&[4, 3, 2, 1])
-///     .set_fctrl(&lorawan::parser::FCtrl::new(0x80, true)) // ADR: true, all others: false
-///     .set_fcnt(76543);
-/// phy.build(b"hello lora", &[], &nwk_skey, &app_skey).unwrap();
-/// ```
 pub struct DataPayloadCreator<D, F> {
     data: D,
     data_f_port: Option<u8>,
@@ -160,7 +145,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> DataPayloadCreator<D, F> {
     ///
     /// # Argument
     ///
-    /// * dev_addr - instance of lorawan::parser::DevAddr or anything that can
+    /// * dev_addr - instance of lorawan::encoding::parser::DevAddr or anything that can
     ///   be converted into it.
     pub fn set_dev_addr<H: AsRef<[u8]>, T: Into<DevAddr<H>>>(&mut self, dev_addr: T) -> &mut Self {
         let converted = dev_addr.into();
@@ -223,26 +208,6 @@ impl<D: AsMut<[u8]>, F: CryptoFactory> DataPayloadCreator<D, F> {
     ///   MAC command encryption.
     /// * app_skey - the key to be used for payload encryption if fport not 0,
     ///   otherwise nwk_skey is only used.
-    ///
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut phy = lorawan::creator::DataPayloadCreator::new();
-    /// let mac_cmd1 = lorawan::maccommands::MacCommand::LinkCheckReq(
-    ///     lorawan::maccommands::LinkCheckReqPayload());
-    /// let mut mac_cmd2 = lorawan::maccommandcreator::LinkADRAnsCreator::new();
-    /// mac_cmd2
-    ///     .set_channel_mask_ack(true)
-    ///     .set_data_rate_ack(false)
-    ///     .set_tx_power_ack(true);
-    /// let mut cmds: Vec<&dyn lorawan::maccommands::SerializableMacCommand> = Vec::new();
-    /// cmds.push(&mac_cmd1);
-    /// cmds.push(&mac_cmd2);
-    /// let nwk_skey = lorawan::keys::AES128([2; 16]);
-    /// let app_skey = lorawan::keys::AES128([1; 16]);
-    /// phy.build(&[], &cmds, &nwk_skey, &app_skey).unwrap();
-    /// ```
     pub fn build(
         &mut self,
         payload: &[u8],
