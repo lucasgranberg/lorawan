@@ -156,7 +156,7 @@ where
             rx2_data_rate: None,
             rx_quality: None,
             battery_level: None,
-            number_of_transmissions: 0,
+            number_of_transmissions: 1,
             channel_plan: Default::default(),
             region: Default::default(),
         }
@@ -396,9 +396,12 @@ where
                                 if let Ok(new_data_rate) = data_rate_res {
                                     self.status.tx_data_rate = new_data_rate
                                 }
-                                if let Ok(_) = channel_mask_res {
+                                if channel_mask_res.is_ok() {
                                     self.status.number_of_transmissions =
                                         payload.redundancy().number_of_transmissions();
+                                    if self.status.number_of_transmissions == 0 {
+                                        self.status.number_of_transmissions = 1;
+                                    }
                                 }
                             }
                             //reset channel mask to match actual status
@@ -637,38 +640,39 @@ where
         radio_buffer: &mut RadioBuffer<256>,
         frame: Frame,
     ) -> Result<Option<(usize, RxQuality)>, Error<D>> {
-        let random = device
-            .rng()
-            .next_u32()
-            .map_err(|e| Error::Device(crate::device::Error::Rng(e)))?;
-        let tx_data_rate = self.tx_data_rate();
-        let channel = self
-            .status
-            .channel_plan
-            .get_random_channel(random, frame, tx_data_rate)
-            .map_err(|_| Error::Mac(crate::mac::Error::NoValidChannelFound))?;
+        for _ in 0..self.status.number_of_transmissions {
+            let random = device
+                .rng()
+                .next_u32()
+                .map_err(|e| Error::Device(crate::device::Error::Rng(e)))?;
+            let tx_data_rate = self.tx_data_rate();
+            let channel = self
+                .status
+                .channel_plan
+                .get_random_channel(random, frame, tx_data_rate)
+                .map_err(|_| Error::Mac(crate::mac::Error::NoValidChannelFound))?;
 
-        let tx_config = self.create_tx_config(frame, &channel)?;
-        defmt::trace!("tx config {:?}", tx_config);
-        // Transmit the join payload
-        let _ms = device
-            .radio()
-            .tx(tx_config, radio_buffer.as_ref())
-            .await
-            .map_err(|e| Error::Device(crate::device::Error::Radio(e)))?;
-        device.timer().reset();
+            let tx_config = self.create_tx_config(frame, &channel)?;
+            defmt::trace!("tx config {:?}", tx_config);
+            // Transmit the join payload
+            let _ms = device
+                .radio()
+                .tx(tx_config, radio_buffer.as_ref())
+                .await
+                .map_err(|e| Error::Device(crate::device::Error::Radio(e)))?;
+            device.timer().reset();
 
-        // Receive join response within RX window
-        let rx_res = self
-            .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &channel)
-            .await;
-        if let Ok(Some((num_read, rx_quality))) = rx_res {
-            self.status.rx_quality = Some(rx_quality);
-            radio_buffer.inc(num_read);
-        } else {
-            defmt::trace!("rx failed");
+            // Receive join response within RX window
+            let rx_res = self
+                .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &channel)
+                .await;
+            if let Ok(Some((num_read, rx_quality))) = rx_res {
+                self.status.rx_quality = Some(rx_quality);
+                radio_buffer.inc(num_read);
+                return rx_res;
+            }
         }
-        rx_res
+        Ok(None)
     }
     fn validate_rx1_data_rate_offset(&self, rx1_dr_offset: u8) -> bool {
         let new_dr = self.tx_data_rate() as u8 + rx1_dr_offset;
@@ -840,6 +844,8 @@ where
                     Ok(_) => Err(Error::Mac(crate::mac::Error::InvalidPayloadType)),
                     Err(e) => Err(Error::Encoding(e)),
                 }
+            } else if confirmed {
+                Err(Error::Mac(super::Error::NoResponse))
             } else {
                 //increment fcnt even when no data is received
                 session_data.fcnt_up_increment();
