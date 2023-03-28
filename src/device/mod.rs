@@ -53,5 +53,5 @@ pub trait Device {
     fn max_data_rate() -> Option<DR> {
         None
     }
-    fn adaptive_data_rate_enabled() -> bool;
+    fn adaptive_data_rate_enabled(&self) -> bool;
 }

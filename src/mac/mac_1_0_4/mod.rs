@@ -360,45 +360,45 @@ where
                 }
                 DownlinkMacCommand::LinkADRReq(payload) => {
                     let mut ans = LinkADRAnsCreator::new();
-                    let new_tx_power =
+                    let tx_power_res =
                         R::modify_dbm(payload.tx_power(), self.status.tx_power, R::max_eirp());
-                    let new_data_rate: Result<Option<DR>, ()> = if payload.data_rate() == 0xF {
+                    let data_rate_res: Result<Option<DR>, ()> = if payload.data_rate() == 0xF {
                         Ok(self.status.tx_data_rate)
                     } else {
                         DR::try_from(payload.data_rate()).map(Some)
                     };
-                    ans.set_tx_power_ack(new_tx_power.is_ok());
-                    ans.set_data_rate_ack(new_data_rate.is_ok());
 
                     let channel_mask_res = self.status.channel_plan.handle_channel_mask(
                         &mut channel_mask,
                         payload.channel_mask(),
                         payload.redundancy().channel_mask_control(),
                     );
+
+                    ans.set_tx_power_ack(tx_power_res.is_ok());
+                    ans.set_data_rate_ack(data_rate_res.is_ok());
                     ans.set_channel_mask_ack(channel_mask_res.is_ok());
                     // check if next command is also a LinkADRReq, if not process the atomic block
                     match cmd_iter.peek() {
                         Some(DownlinkMacCommand::LinkADRReq(_)) => (),
                         _ => {
-                            match (new_tx_power, new_data_rate, channel_mask_res) {
-                                (Ok(new_tx_power), Ok(new_data_rate), Ok(_)) => {
-                                    if self
-                                        .status
-                                        .channel_plan
-                                        .set_channel_mask(channel_mask)
-                                        .is_ok()
-                                    {
-                                        self.status.tx_power = new_tx_power;
-                                        self.status.tx_data_rate = new_data_rate;
-                                        self.status.number_of_transmissions =
-                                            payload.redundancy().number_of_transmissions();
-                                        ans.set_channel_mask_ack(true);
-                                    } else {
-                                        ans.set_channel_mask_ack(false);
-                                    }
+                            // The end-device SHALL respond to all LinkADRReq commands
+                            // with a LinkADRAns indicating which command elements were accepted and which were
+                            // rejected. This behavior differs from when the uplink ADR bit is set, in which case the end-
+                            // device accepts or rejects the entire command.
+                            if device.adaptive_data_rate_enabled()
+                                || (tx_power_res.is_ok()
+                                    && data_rate_res.is_ok()
+                                    && channel_mask_res.is_ok())
+                            {
+                                if let Ok(new_tx_power) = tx_power_res {
+                                    self.status.tx_power = new_tx_power
                                 }
-                                _ => {
-                                    ans.set_channel_mask_ack(false);
+                                if let Ok(new_data_rate) = data_rate_res {
+                                    self.status.tx_data_rate = new_data_rate
+                                }
+                                if let Ok(_) = channel_mask_res {
+                                    self.status.number_of_transmissions =
+                                        payload.redundancy().number_of_transmissions();
                                 }
                             }
                             //reset channel mask to match actual status
@@ -569,12 +569,11 @@ where
                     if let Window::_1 = window {
                         window = Window::_2;
                     } else {
-                        break;
+                        return Ok(None);
                     }
                 }
             }
         }
-        Ok(None)
     }
 
     fn prepare_buffer<CRYPTO: CryptoFactory>(
@@ -583,6 +582,7 @@ where
         fport: u8,
         confirmed: bool,
         radio_buffer: &mut RadioBuffer<256>,
+        device: &D,
         factory: CRYPTO,
     ) -> Result<u32, Error<D>> {
         if let Some(session) = self.session {
@@ -596,7 +596,7 @@ where
                 DataPayloadCreator::new(GenericArray::default(), factory);
 
             let mut fctrl = FCtrl(0x0, true);
-            if D::adaptive_data_rate_enabled() {
+            if device.adaptive_data_rate_enabled() {
                 fctrl.set_adr();
             }
 
@@ -792,7 +792,7 @@ where
             if self.session.is_none() {
                 return Err(Error::Mac(crate::mac::Error::NetworkNotJoined));
             }
-            self.prepare_buffer(data, fport, confirmed, radio_buffer, DefaultFactory)?;
+            self.prepare_buffer(data, fport, confirmed, radio_buffer, device, DefaultFactory)?;
             let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
             // Handle received data
             if let Some(ref mut session_data) = self.session {
@@ -859,6 +859,8 @@ where
                         Err(e) => Err(Error::Encoding(e)),
                     }
                 } else {
+                    //increment fcnt even when no data is received
+                    session_data.fcnt_up_increment();
                     Ok(0)
                 }
             } else {
