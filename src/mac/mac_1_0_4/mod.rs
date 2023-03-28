@@ -698,6 +698,157 @@ where
         self.status.rx2_data_rate = Some(rx2_data_rate);
         Ok(())
     }
+    async fn join_inner<'m>(
+        &'m mut self,
+        device: &'m mut D,
+        radio_buffer: &'m mut RadioBuffer<256>,
+    ) -> Result<(), Error<D>> {
+        self.credentials.incr_dev_nonce();
+        device
+            .credentials_store()
+            .save(self.credentials)
+            .map_err(|e| Error::Device(crate::device::Error::CredentialsStore(e)))?;
+        self.create_join_request(radio_buffer);
+        let rx_res = self.send_buffer(device, radio_buffer, Frame::Join).await?;
+        if rx_res.is_some() {
+            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)
+                .map_err(Error::Encoding)?
+            {
+                PhyPayload::JoinAccept(encrypted) => {
+                    let decrypt = DecryptedJoinAcceptPayload::new_from_encrypted(
+                        encrypted,
+                        &self.credentials.app_key,
+                    );
+                    if decrypt.validate_mic(&self.credentials.app_key) {
+                        let session = Session::derive_new(
+                            &decrypt,
+                            DevNonce::<[u8; 2]>::new_from_raw(
+                                self.credentials.dev_nonce.to_le_bytes(),
+                            ),
+                            self.credentials,
+                        );
+                        defmt::trace!("msg {=[u8]:02X}", decrypt.as_bytes());
+                        defmt::trace!("new {=[u8]:02X}", session.newskey().0);
+                        defmt::trace!("app {=[u8]:02X}", session.appskey().0);
+                        defmt::trace!("rx1 {:?}", decrypt.dl_settings().rx1_dr_offset());
+                        defmt::trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
+                        defmt::trace!("rx2 {:?}", decrypt.c_f_list());
+                        self.session.replace(session);
+
+                        let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
+                            self.validata_dl_settings(decrypt.dl_settings());
+                        defmt::trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
+                        if rx1_data_rate_offset_ack && rx2_data_rate_ack {
+                            self.handle_dl_settings(decrypt.dl_settings())?
+                        }
+
+                        let delay = match decrypt.rx_delay() {
+                            0 => 1,
+                            _ => decrypt.rx_delay(),
+                        };
+                        self.status.rx_delay = Some(delay);
+                        if let Some(cf_list) = decrypt.c_f_list() {
+                            self.status
+                                .channel_plan
+                                .handle_cf_list(cf_list)
+                                .map_err(Error::Region)?;
+                        }
+                        Ok(())
+                    } else {
+                        Err(Error::Mac(crate::mac::Error::InvalidMic))
+                    }
+                }
+                _ => Err(Error::Mac(crate::mac::Error::InvalidPayloadType)),
+            }
+        } else {
+            Err(Error::Mac(crate::mac::Error::NoResponse))
+        }
+    }
+    async fn send_inner(
+        &mut self,
+        device: &mut D,
+        radio_buffer: &mut RadioBuffer<256>,
+        data: &[u8],
+        fport: u8,
+        confirmed: bool,
+        rx: Option<&mut [u8]>,
+    ) -> Result<usize, Error<D>> {
+        if self.session.is_none() {
+            return Err(Error::Mac(crate::mac::Error::NetworkNotJoined));
+        }
+        self.prepare_buffer(data, fport, confirmed, radio_buffer, device, DefaultFactory)?;
+        let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
+        // Handle received data
+        if let Some(ref mut session_data) = self.session {
+            // Parse payload and copy into user bufer is provided
+            if rx_res.is_some() {
+                let res = parse_with_factory(radio_buffer.as_mut(), DefaultFactory);
+                match res {
+                    Ok(PhyPayload::Data(encrypted_data)) => {
+                        if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
+                            let fcnt = encrypted_data.fhdr().fcnt() as u32;
+                            let confirmed = encrypted_data.is_confirmed();
+                            if encrypted_data.validate_mic(session_data.newskey(), fcnt)
+                                && (fcnt > session_data.fcnt_down || fcnt == 0)
+                            {
+                                session_data.fcnt_down = fcnt;
+                                // increment the FcntUp since we have received
+                                // downlink - only reason to not increment
+                                // is if confirmed frame is sent and no
+                                // confirmation (ie: downlink) occurs
+                                session_data.fcnt_up_increment();
+
+                                // * the decrypt will always work when we have verified MIC previously
+                                let decrypted = DecryptedDataPayload::new_from_encrypted(
+                                    encrypted_data,
+                                    Some(session_data.newskey()),
+                                    Some(session_data.appskey()),
+                                    session_data.fcnt_down,
+                                )
+                                .unwrap();
+
+                                self.cmds.clear(); //clear cmd buffer
+                                defmt::trace!("fhdr {:?}", decrypted.fhdr().0);
+                                self.handle_downlink_macs(device, (&decrypted.fhdr()).into())?;
+
+                                if confirmed {
+                                    self.status.confirm_next = true;
+                                }
+                                match decrypted.frm_payload().map_err(Error::Encoding)? {
+                                    FRMPayload::MACCommands(mac_cmds) => {
+                                        self.handle_downlink_macs(device, (&mac_cmds).into())?;
+                                        Ok(0)
+                                    }
+                                    FRMPayload::Data(rx_data) => {
+                                        if let Some(rx) = rx {
+                                            let to_copy = core::cmp::min(rx.len(), rx_data.len());
+                                            rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
+                                            Ok(to_copy)
+                                        } else {
+                                            Ok(0)
+                                        }
+                                    }
+                                    FRMPayload::None => Ok(0),
+                                }
+                            } else {
+                                Err(Error::Mac(crate::mac::Error::InvalidMic))
+                            }
+                        } else {
+                            Err(Error::Mac(crate::mac::Error::InvalidDevAddr))
+                        }
+                    }
+                    Ok(_) => Err(Error::Mac(crate::mac::Error::InvalidPayloadType)),
+                    Err(e) => Err(Error::Encoding(e)),
+                }
+            } else {
+                //increment fcnt even when no data is received
+                session_data.fcnt_up_increment();
+                Ok(0)
+            }
+        } else {
+            Err(Error::Mac(crate::mac::Error::NetworkNotJoined))
+        }
+    }
 }
 
 impl<'a, R, D, C> crate::mac::Mac<R, D> for Mac<'a, R, D, C>
@@ -714,68 +865,7 @@ where
         device: &'m mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
     ) -> Self::JoinFuture<'m> {
-        async move {
-            self.credentials.incr_dev_nonce();
-            device
-                .credentials_store()
-                .save(self.credentials)
-                .map_err(|e| Error::Device(crate::device::Error::CredentialsStore(e)))?;
-            self.create_join_request(radio_buffer);
-            let rx_res = self.send_buffer(device, radio_buffer, Frame::Join).await?;
-            if rx_res.is_some() {
-                match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)
-                    .map_err(Error::Encoding)?
-                {
-                    PhyPayload::JoinAccept(encrypted) => {
-                        let decrypt = DecryptedJoinAcceptPayload::new_from_encrypted(
-                            encrypted,
-                            &self.credentials.app_key,
-                        );
-                        if decrypt.validate_mic(&self.credentials.app_key) {
-                            let session = Session::derive_new(
-                                &decrypt,
-                                DevNonce::<[u8; 2]>::new_from_raw(
-                                    self.credentials.dev_nonce.to_le_bytes(),
-                                ),
-                                self.credentials,
-                            );
-                            defmt::trace!("msg {=[u8]:02X}", decrypt.as_bytes());
-                            defmt::trace!("new {=[u8]:02X}", session.newskey().0);
-                            defmt::trace!("app {=[u8]:02X}", session.appskey().0);
-                            defmt::trace!("rx1 {:?}", decrypt.dl_settings().rx1_dr_offset());
-                            defmt::trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
-                            defmt::trace!("rx2 {:?}", decrypt.c_f_list());
-                            self.session.replace(session);
-
-                            let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
-                                self.validata_dl_settings(decrypt.dl_settings());
-                            defmt::trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
-                            if rx1_data_rate_offset_ack && rx2_data_rate_ack {
-                                self.handle_dl_settings(decrypt.dl_settings())?
-                            }
-
-                            let delay = match decrypt.rx_delay() {
-                                0 => 1,
-                                _ => decrypt.rx_delay(),
-                            };
-                            self.status.rx_delay = Some(delay);
-                            if let Some(cf_list) = decrypt.c_f_list() {
-                                self.status
-                                    .channel_plan
-                                    .handle_cf_list(cf_list)
-                                    .map_err(Error::Region)?;
-                            }
-                            Ok(())
-                        } else {
-                            Err(Error::Mac(crate::mac::Error::InvalidMic))
-                        }
-                    }
-                    _ => Err(Error::Mac(crate::mac::Error::InvalidPayloadType)),
-                }
-            } else {
-                Err(Error::Mac(crate::mac::Error::NoResponse))
-            }
-        }
+        self.join_inner(device, radio_buffer)
     }
 
     type SendFuture<'m> = impl Future<Output = Result<usize, Self::Error>> + 'm where Self: 'm, D: 'm;
@@ -788,84 +878,6 @@ where
         confirmed: bool,
         rx: Option<&'m mut [u8]>,
     ) -> Self::SendFuture<'m> {
-        async move {
-            if self.session.is_none() {
-                return Err(Error::Mac(crate::mac::Error::NetworkNotJoined));
-            }
-            self.prepare_buffer(data, fport, confirmed, radio_buffer, device, DefaultFactory)?;
-            let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
-            // Handle received data
-            if let Some(ref mut session_data) = self.session {
-                // Parse payload and copy into user bufer is provided
-                if rx_res.is_some() {
-                    let res = parse_with_factory(radio_buffer.as_mut(), DefaultFactory);
-                    match res {
-                        Ok(PhyPayload::Data(encrypted_data)) => {
-                            if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
-                                let fcnt = encrypted_data.fhdr().fcnt() as u32;
-                                let confirmed = encrypted_data.is_confirmed();
-                                if encrypted_data.validate_mic(session_data.newskey(), fcnt)
-                                    && (fcnt > session_data.fcnt_down || fcnt == 0)
-                                {
-                                    session_data.fcnt_down = fcnt;
-                                    // increment the FcntUp since we have received
-                                    // downlink - only reason to not increment
-                                    // is if confirmed frame is sent and no
-                                    // confirmation (ie: downlink) occurs
-                                    session_data.fcnt_up_increment();
-
-                                    // * the decrypt will always work when we have verified MIC previously
-                                    let decrypted = DecryptedDataPayload::new_from_encrypted(
-                                        encrypted_data,
-                                        Some(session_data.newskey()),
-                                        Some(session_data.appskey()),
-                                        session_data.fcnt_down,
-                                    )
-                                    .unwrap();
-
-                                    self.cmds.clear(); //clear cmd buffer
-                                    defmt::trace!("fhdr {:?}", decrypted.fhdr().0);
-                                    self.handle_downlink_macs(device, (&decrypted.fhdr()).into())?;
-
-                                    if confirmed {
-                                        self.status.confirm_next = true;
-                                    }
-                                    match decrypted.frm_payload().map_err(Error::Encoding)? {
-                                        FRMPayload::MACCommands(mac_cmds) => {
-                                            self.handle_downlink_macs(device, (&mac_cmds).into())?;
-                                            Ok(0)
-                                        }
-                                        FRMPayload::Data(rx_data) => {
-                                            if let Some(rx) = rx {
-                                                let to_copy =
-                                                    core::cmp::min(rx.len(), rx_data.len());
-                                                rx[0..to_copy]
-                                                    .copy_from_slice(&rx_data[0..to_copy]);
-                                                Ok(to_copy)
-                                            } else {
-                                                Ok(0)
-                                            }
-                                        }
-                                        FRMPayload::None => Ok(0),
-                                    }
-                                } else {
-                                    Err(Error::Mac(crate::mac::Error::InvalidMic))
-                                }
-                            } else {
-                                Err(Error::Mac(crate::mac::Error::InvalidDevAddr))
-                            }
-                        }
-                        Ok(_) => Err(Error::Mac(crate::mac::Error::InvalidPayloadType)),
-                        Err(e) => Err(Error::Encoding(e)),
-                    }
-                } else {
-                    //increment fcnt even when no data is received
-                    session_data.fcnt_up_increment();
-                    Ok(0)
-                }
-            } else {
-                Err(Error::Mac(crate::mac::Error::NetworkNotJoined))
-            }
-        }
+        self.send_inner(device, radio_buffer, data, fport, confirmed, rx)
     }
 }
