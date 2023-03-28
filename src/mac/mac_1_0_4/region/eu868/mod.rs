@@ -86,7 +86,7 @@ impl crate::mac::Region for Eu868 {
         CodingRate::_4_5
     }
     fn max_eirp() -> i8 {
-        14
+        16
     }
     fn supports_tx_param_setup() -> bool {
         false
