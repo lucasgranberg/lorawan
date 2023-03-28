@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_main)]
 #![feature(type_alias_impl_trait)]
 #![feature(concat_idents)]
 
@@ -27,6 +29,7 @@ where
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum DR {
     _0 = 0,

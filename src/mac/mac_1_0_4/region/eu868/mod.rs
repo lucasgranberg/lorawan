@@ -79,7 +79,7 @@ impl crate::mac::Region for Eu868 {
                 spreading_factor: SpreadingFactor::_7,
                 bandwidth: Bandwidth::_250KHz,
             }),
-            _ => Err(super::Error::DataRateNotSupported),
+            _ => Err(super::Error::DataRateNotSupported(dr)),
         }
     }
     fn default_coding_rate() -> CodingRate {
