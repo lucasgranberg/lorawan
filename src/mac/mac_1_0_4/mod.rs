@@ -635,7 +635,7 @@ where
         }
     }
     async fn send_buffer(
-        &mut self,
+        &self,
         device: &mut D,
         radio_buffer: &mut RadioBuffer<256>,
         frame: Frame,
@@ -666,11 +666,10 @@ where
             let rx_res = self
                 .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &channel)
                 .await;
-            if let Ok(Some((num_read, rx_quality))) = rx_res {
-                self.status.rx_quality = Some(rx_quality);
+            if let Ok(Some((num_read, _))) = rx_res {
                 radio_buffer.inc(num_read);
-                return rx_res;
             }
+            return rx_res;
         }
         Ok(None)
     }
@@ -787,7 +786,8 @@ where
         // Handle received data
         if let Some(ref mut session_data) = self.session {
             // Parse payload and copy into user bufer is provided
-            if rx_res.is_some() {
+            if let Some((_, rx_quality)) = rx_res {
+                self.status.rx_quality = Some(rx_quality);
                 let res = parse_with_factory(radio_buffer.as_mut(), DefaultFactory);
                 match res {
                     Ok(PhyPayload::Data(encrypted_data)) => {
