@@ -777,7 +777,9 @@ where
         confirmed: bool,
         rx: Option<&mut [u8]>,
     ) -> Result<usize, Error<D>> {
-        if self.session.is_none() {
+        if let Some(ref mut session_data) = self.session {
+            session_data.fcnt_up_increment();
+        } else {
             return Err(Error::Mac(crate::mac::Error::NetworkNotJoined));
         }
         self.prepare_buffer(data, fport, confirmed, radio_buffer, device, DefaultFactory)?;
@@ -796,11 +798,6 @@ where
                                 && (fcnt > session_data.fcnt_down || fcnt == 0)
                             {
                                 session_data.fcnt_down = fcnt;
-                                // increment the FcntUp since we have received
-                                // downlink - only reason to not increment
-                                // is if confirmed frame is sent and no
-                                // confirmation (ie: downlink) occurs
-                                session_data.fcnt_up_increment();
 
                                 // * the decrypt will always work when we have verified MIC previously
                                 let decrypted = DecryptedDataPayload::new_from_encrypted(
