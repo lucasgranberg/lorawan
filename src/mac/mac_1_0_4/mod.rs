@@ -156,6 +156,7 @@ where
     C: ChannelPlan<R> + Default,
 {
     credentials: &'a mut Credentials,
+    session: Option<Session>,
     status: &'a mut Status,
     channel_plan: C,
     region: PhantomData<R>,
@@ -168,14 +169,10 @@ where
     D: Device,
     C: ChannelPlan<R> + Default,
 {
-    pub fn new(
-        credentials: &'a mut Credentials,
-        session: &'a mut Option<Session>,
-        status: &'a mut Status<C, R>,
-    ) -> Self {
+    pub fn new(credentials: &'a mut Credentials, status: &'a mut Status) -> Self {
         Self {
             credentials,
-            session,
+            session: None,
             status,
             channel_plan: Default::default(),
             region: PhantomData::default(),
@@ -574,7 +571,7 @@ where
         device: &D,
         factory: CRYPTO,
     ) -> Result<u32, Error<D>> {
-        if let Some(session) = self.session {
+        if let Some(session) = &self.session {
             // check if FCnt is used up
             if session.fcnt_up() == (0xFFFF + 1) {
                 // signal that the session is expired
