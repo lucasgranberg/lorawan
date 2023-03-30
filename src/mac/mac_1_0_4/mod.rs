@@ -130,7 +130,6 @@ pub struct Status {
     pub(crate) rx1_data_rate_offset: Option<u8>,
     pub(crate) rx_delay: Option<u8>,
     pub(crate) rx2_data_rate: Option<DR>,
-    pub(crate) battery_level: Option<f32>,
     pub(crate) number_of_transmissions: u8,
 }
 impl Default for Status {
@@ -143,7 +142,6 @@ impl Default for Status {
             rx1_data_rate_offset: None,
             rx_delay: None,
             rx2_data_rate: None,
-            battery_level: None,
             number_of_transmissions: 1,
         }
     }
@@ -417,7 +415,7 @@ where
                 }
                 DownlinkMacCommand::DevStatusReq(_) => {
                     let mut ans = DevStatusAnsCreator::new();
-                    match self.status.battery_level {
+                    match device.battery_level() {
                         Some(battery_level) => ans.set_battery((battery_level * 253.0) as u8 + 1),
                         None => ans.set_battery(255),
                     };
