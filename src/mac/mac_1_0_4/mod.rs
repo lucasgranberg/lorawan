@@ -112,25 +112,33 @@ impl Session {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Credentials {
-    pub app_eui: [u8; 8],
-    pub dev_eui: [u8; 8],
-    pub app_key: AES128,
-    pub dev_nonce: u16,
+    app_eui: [u8; 8],
+    dev_eui: [u8; 8],
+    app_key: AES128,
+    dev_nonce: u16,
 }
 impl Credentials {
+    pub fn new(app_eui: [u8; 8], dev_eui: [u8; 8], app_key: AES128) -> Self {
+        Self {
+            app_eui,
+            dev_eui,
+            app_key,
+            dev_nonce: 0,
+        }
+    }
     fn incr_dev_nonce(&mut self) {
         self.dev_nonce += 1;
     }
 }
 pub struct Status {
-    pub(crate) confirm_next: bool,
-    pub(crate) max_duty_cycle: f32,
-    pub(crate) tx_power: Option<i8>,
-    pub(crate) tx_data_rate: Option<DR>,
-    pub(crate) rx1_data_rate_offset: Option<u8>,
-    pub(crate) rx_delay: Option<u8>,
-    pub(crate) rx2_data_rate: Option<DR>,
-    pub(crate) number_of_transmissions: u8,
+    confirm_next: bool,
+    max_duty_cycle: f32,
+    tx_power: Option<i8>,
+    tx_data_rate: Option<DR>,
+    rx1_data_rate_offset: Option<u8>,
+    rx_delay: Option<u8>,
+    rx2_data_rate: Option<DR>,
+    number_of_transmissions: u8,
 }
 impl Default for Status {
     fn default() -> Self {
