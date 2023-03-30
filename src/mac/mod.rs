@@ -1,6 +1,7 @@
 use core::fmt::Debug;
 use futures::Future;
 
+use crate::device::radio::types::RxQuality;
 use crate::{
     device::{radio_buffer::RadioBuffer, Device},
     Window,
@@ -33,7 +34,7 @@ where
     where
         Self: 'm,
         D: 'm;
-    type SendFuture<'m>: Future<Output = Result<usize, Self::Error>> + 'm
+    type SendFuture<'m>: Future<Output = Result<Option<(usize, RxQuality)>, Self::Error>> + 'm
     where
         Self: 'm,
         D: 'm;

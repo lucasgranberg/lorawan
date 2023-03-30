@@ -143,7 +143,6 @@ impl Default for Status {
             rx1_data_rate_offset: None,
             rx_delay: None,
             rx2_data_rate: None,
-            rx_quality: None,
             battery_level: None,
             number_of_transmissions: 1,
         }
@@ -329,8 +328,9 @@ where
     fn handle_downlink_macs(
         &mut self,
         device: &mut D,
+        rx_quality: RxQuality,
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'_>>,
-    ) -> Result<(), Error<D>> {
+    ) -> Result<bool, Error<D>> {
         let mut channel_mask = self.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
         while let Some(cmd) = cmd_iter.next() {
@@ -421,10 +421,8 @@ where
                         Some(battery_level) => ans.set_battery((battery_level * 253.0) as u8 + 1),
                         None => ans.set_battery(255),
                     };
-                    match self.status.rx_quality {
-                        Some(rx_quality) => ans.set_margin(rx_quality.snr()).unwrap(),
-                        None => ans.set_margin(0).unwrap(),
-                    };
+                    ans.set_margin(rx_quality.snr())
+                        .map_err(|e| Error::Encoding(e))?;
                     Some(UplinkMacCommandCreator::DevStatusAns(ans))
                 }
                 DownlinkMacCommand::NewChannelReq(payload) => {
@@ -647,11 +645,13 @@ where
             // Receive join response within RX window
             let rx_res = self
                 .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &channel)
-                .await;
-            if let Ok(Some((num_read, _))) = rx_res {
+                .await?;
+            if let Some((num_read, _)) = rx_res {
                 radio_buffer.inc(num_read);
             }
-            return rx_res;
+            if rx_res.is_some() {
+                return Ok(rx_res);
+            }
         }
         Ok(None)
     }
@@ -756,7 +756,7 @@ where
         fport: u8,
         confirmed: bool,
         rx: Option<&mut [u8]>,
-    ) -> Result<usize, Error<D>> {
+    ) -> Result<Option<(usize, RxQuality)>, Error<D>> {
         if let Some(ref mut session_data) = self.session {
             session_data.fcnt_up_increment();
         } else {
@@ -768,7 +768,6 @@ where
         if let Some(ref mut session_data) = self.session {
             // Parse payload and copy into user bufer is provided
             if let Some((_, rx_quality)) = rx_res {
-                self.status.rx_quality = Some(rx_quality);
                 let res = parse_with_factory(radio_buffer.as_mut(), DefaultFactory);
                 match res {
                     Ok(PhyPayload::Data(encrypted_data)) => {
@@ -791,26 +790,34 @@ where
 
                                 self.cmds.clear(); //clear cmd buffer
                                 defmt::trace!("fhdr {:?}", decrypted.fhdr().0);
-                                self.handle_downlink_macs(device, (&decrypted.fhdr()).into())?;
+                                self.handle_downlink_macs(
+                                    device,
+                                    rx_quality,
+                                    (&decrypted.fhdr()).into(),
+                                )?;
 
                                 if confirmed {
                                     self.status.confirm_next = true;
                                 }
                                 match decrypted.frm_payload().map_err(Error::Encoding)? {
                                     FRMPayload::MACCommands(mac_cmds) => {
-                                        self.handle_downlink_macs(device, (&mac_cmds).into())?;
-                                        Ok(0)
+                                        self.handle_downlink_macs(
+                                            device,
+                                            rx_quality,
+                                            (&mac_cmds).into(),
+                                        )?;
+                                        Ok(Some((0, rx_quality)))
                                     }
                                     FRMPayload::Data(rx_data) => {
                                         if let Some(rx) = rx {
                                             let to_copy = core::cmp::min(rx.len(), rx_data.len());
                                             rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
-                                            Ok(to_copy)
+                                            Ok(Some((to_copy, rx_quality)))
                                         } else {
-                                            Ok(0)
+                                            Ok(Some((0, rx_quality)))
                                         }
                                     }
-                                    FRMPayload::None => Ok(0),
+                                    FRMPayload::None => Ok(Some((0, rx_quality))),
                                 }
                             } else {
                                 Err(Error::Mac(crate::mac::Error::InvalidMic))
@@ -827,7 +834,7 @@ where
             } else {
                 //increment fcnt even when no data is received
                 session_data.fcnt_up_increment();
-                Ok(0)
+                Ok(None)
             }
         } else {
             Err(Error::Mac(crate::mac::Error::NetworkNotJoined))
@@ -852,7 +859,7 @@ where
         self.join_inner(device, radio_buffer)
     }
 
-    type SendFuture<'m> = impl Future<Output = Result<usize, Self::Error>> + 'm where Self: 'm, D: 'm;
+    type SendFuture<'m> = impl Future<Output = Result<Option<(usize,RxQuality)>, Self::Error>> + 'm where Self: 'm, D: 'm;
     fn send<'m>(
         &'m mut self,
         device: &'m mut D,
