@@ -131,7 +131,6 @@ impl Credentials {
     }
 }
 pub struct Status {
-    confirm_next: bool,
     max_duty_cycle: f32,
     tx_power: Option<i8>,
     tx_data_rate: Option<DR>,
@@ -144,7 +143,6 @@ impl Default for Status {
     fn default() -> Self {
         Self {
             tx_data_rate: None,
-            confirm_next: false,
             tx_power: None,
             max_duty_cycle: 0.0,
             rx1_data_rate_offset: None,
@@ -590,9 +588,8 @@ where
                 fctrl.set_adr();
             }
 
-            if self.status.confirm_next {
+            if confirmed {
                 fctrl.set_ack();
-                self.status.confirm_next = false;
             }
 
             phy.set_confirmed(confirmed)
@@ -801,10 +798,6 @@ where
                                     rx_quality,
                                     (&decrypted.fhdr()).into(),
                                 )?;
-
-                                if confirmed {
-                                    self.status.confirm_next = true;
-                                }
                                 match decrypted.frm_payload().map_err(Error::Encoding)? {
                                     FRMPayload::MACCommands(mac_cmds) => {
                                         self.handle_downlink_macs(
