@@ -122,11 +122,7 @@ impl Credentials {
         self.dev_nonce += 1;
     }
 }
-pub struct Status<C, R>
-where
-    R: Region,
-    C: ChannelPlan<R> + Default,
-{
+pub struct Status {
     pub(crate) confirm_next: bool,
     pub(crate) max_duty_cycle: f32,
     pub(crate) tx_power: Option<i8>,
@@ -134,17 +130,10 @@ where
     pub(crate) rx1_data_rate_offset: Option<u8>,
     pub(crate) rx_delay: Option<u8>,
     pub(crate) rx2_data_rate: Option<DR>,
-    pub(crate) rx_quality: Option<RxQuality>,
     pub(crate) battery_level: Option<f32>,
-    pub(crate) channel_plan: C,
     pub(crate) number_of_transmissions: u8,
-    region: PhantomData<R>,
 }
-impl<C, R> Default for Status<C, R>
-where
-    R: Region,
-    C: ChannelPlan<R> + Default,
-{
+impl Default for Status {
     fn default() -> Self {
         Self {
             tx_data_rate: None,
@@ -157,8 +146,6 @@ where
             rx_quality: None,
             battery_level: None,
             number_of_transmissions: 1,
-            channel_plan: Default::default(),
-            region: Default::default(),
         }
     }
 }
@@ -169,8 +156,8 @@ where
     C: ChannelPlan<R> + Default,
 {
     credentials: &'a mut Credentials,
-    session: &'a mut Option<Session>,
-    status: &'a mut Status<C, R>,
+    status: &'a mut Status,
+    channel_plan: C,
     region: PhantomData<R>,
     device: PhantomData<D>,
     cmds: Vec<UplinkMacCommandCreator, 15>,
@@ -190,6 +177,7 @@ where
             credentials,
             session,
             status,
+            channel_plan: Default::default(),
             region: PhantomData::default(),
             device: PhantomData::default(),
             cmds: Vec::new(),
@@ -346,7 +334,7 @@ where
         device: &mut D,
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'_>>,
     ) -> Result<(), Error<D>> {
-        let mut channel_mask = self.status.channel_plan.get_channel_mask();
+        let mut channel_mask = self.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
         while let Some(cmd) = cmd_iter.next() {
             let res: Option<UplinkMacCommandCreator> = match cmd {
@@ -368,7 +356,7 @@ where
                         DR::try_from(payload.data_rate()).map(Some)
                     };
 
-                    let channel_mask_res = self.status.channel_plan.handle_channel_mask(
+                    let channel_mask_res = self.channel_plan.handle_channel_mask(
                         &mut channel_mask,
                         payload.channel_mask(),
                         payload.redundancy().channel_mask_control(),
@@ -405,7 +393,7 @@ where
                                 }
                             }
                             //reset channel mask to match actual status
-                            channel_mask = self.status.channel_plan.get_channel_mask();
+                            channel_mask = self.channel_plan.get_channel_mask();
                         }
                     }
 
@@ -461,7 +449,7 @@ where
                         ans.set_channel_frequency_ack(channel_frequency_ack);
                         ans.set_data_rate_range_ack(data_rate_range_ack);
                         if data_rate_range_ack && channel_frequency_ack {
-                            match self.status.channel_plan.handle_new_channel_req(payload) {
+                            match self.channel_plan.handle_new_channel_req(payload) {
                                 Ok(_) => ans.set_channel_frequency_ack(true),
                                 Err(_) => ans.set_channel_frequency_ack(false),
                             };
@@ -476,15 +464,13 @@ where
                         frequency_range.contains(&payload.frequency().value());
                     //let mut uplink_frequency_exists_ack = false;
                     let uplink_frequency_exists_ack = self
-                        .status
                         .channel_plan
                         .check_uplink_frequency_exists(payload.channel_index() as usize);
                     if channel_frequency_ack {
-                        channel_frequency_ack = self
-                            .status
-                            .channel_plan
-                            .handle_dl_channel_req(payload)
-                            .is_ok()
+                        channel_frequency_ack =
+                            self.channel_plan.handle_dl_channel_req(payload).is_ok()
+                    }
+                    
                     }
                     ans.set_uplink_frequency_exists_ack(uplink_frequency_exists_ack);
                     ans.set_channel_frequency_ack(channel_frequency_ack);
@@ -647,7 +633,6 @@ where
                 .map_err(|e| Error::Device(crate::device::Error::Rng(e)))?;
             let tx_data_rate = self.tx_data_rate();
             let channel = self
-                .status
                 .channel_plan
                 .get_random_channel(random, frame, tx_data_rate)
                 .map_err(|_| Error::Mac(crate::mac::Error::NoValidChannelFound))?;
@@ -751,8 +736,7 @@ where
                         };
                         self.status.rx_delay = Some(delay);
                         if let Some(cf_list) = decrypt.c_f_list() {
-                            self.status
-                                .channel_plan
+                            self.channel_plan
                                 .handle_cf_list(cf_list)
                                 .map_err(Error::Region)?;
                         }
