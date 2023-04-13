@@ -170,7 +170,7 @@ impl TryFrom<&[u8]> for Storable {
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.len() != ::core::mem::size_of::<Self>() || bytes[0] == 0xff {
-            return Err(());
+            Err(())
         } else {
             let mut buf: [u8; ::core::mem::size_of::<Self>()] = [0; ::core::mem::size_of::<Self>()];
             buf.copy_from_slice(bytes);
@@ -178,12 +178,12 @@ impl TryFrom<&[u8]> for Storable {
         }
     }
 }
-impl<'a> Into<&'a [u8]> for Storable {
-    fn into(self) -> &'a [u8] {
+impl From<Storable> for &[u8] {
+    fn from(storable: Storable) -> Self {
         unsafe {
             ::core::slice::from_raw_parts(
-                (&self as *const Self) as *const u8,
-                ::core::mem::size_of::<Self>(),
+                (&storable as *const Storable) as *const u8,
+                ::core::mem::size_of::<Storable>(),
             )
         }
     }
@@ -220,11 +220,13 @@ where
         <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error,
     > {
         let storable: Storable = non_volatile_store.load()?;
-        let mut configuration: Configuration = Default::default();
-        configuration.rx1_data_rate_offset = storable.rx1_data_rate_offset;
-        configuration.rx_delay = storable.rx_delay;
-        configuration.rx2_data_rate = storable.rx2_data_rate;
-        configuration.rx2_frequency = storable.rx2_frequency;
+        let configuration = Configuration {
+            rx1_data_rate_offset: storable.rx1_data_rate_offset,
+            rx_delay: storable.rx_delay,
+            rx2_data_rate: storable.rx2_data_rate,
+            rx2_frequency: storable.rx2_frequency,
+            ..Default::default()
+        };
         let mut credentials = Credentials::new(app_eui, dev_eui, app_key);
         credentials.dev_nonce = storable.dev_nonce;
         Ok((configuration, credentials))
@@ -652,7 +654,7 @@ where
         data_rate: DR,
         channel: &C::Channel,
     ) -> Result<Option<(usize, RxQuality)>, Error<D>> {
-        let windows = self.get_rx_windows(&device.configuration(), frame);
+        let windows = self.get_rx_windows(device.configuration(), frame);
         let mut window = Window::_1;
 
         loop {
@@ -804,7 +806,7 @@ where
         device
             .persist_to_non_volatile()
             .map_err(|e| Error::Device(crate::device::Error::NonVolatileStore(e)))?;
-        self.create_join_request(&device.credentials(), radio_buffer);
+        self.create_join_request(device.credentials(), radio_buffer);
         let rx_res = self.send_buffer(device, radio_buffer, Frame::Join).await?;
         if rx_res.is_some() {
             match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)
@@ -821,7 +823,7 @@ where
                             DevNonce::<[u8; 2]>::new_from_raw(
                                 device.credentials().dev_nonce.to_le_bytes(),
                             ),
-                            &device.credentials(),
+                            device.credentials(),
                         );
                         defmt::trace!("msg {=[u8]:02X}", decrypt.as_bytes());
                         defmt::trace!("new {=[u8]:02X}", session.newskey().0);

@@ -213,11 +213,9 @@ where
     }
 
     fn validate_frequency(&self, frequency: u32) -> Result<(), Error> {
-        for channel in self.channels.iter() {
-            if let Some(ch) = channel {
-                if ch.get_frequency().value() == frequency {
-                    return Ok(());
-                }
+        for channel in self.channels.iter().flatten() {
+            if channel.get_frequency().value() == frequency {
+                return Ok(());
             }
         }
         Err(Error::InvalidFrequency)
