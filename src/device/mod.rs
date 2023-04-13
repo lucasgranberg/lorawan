@@ -43,9 +43,13 @@ pub trait Device {
         // default do nothing
     }
 
-    fn adaptive_data_rate_enabled(&self) -> bool;
+    fn adaptive_data_rate_enabled(&self) -> bool {
+        true
+    }
 
-    fn battery_level(&self) -> Option<f32>;
+    fn battery_level(&self) -> Option<f32> {
+        None
+    }
 
     fn min_frequency() -> Option<u32> {
         None
