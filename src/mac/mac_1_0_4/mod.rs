@@ -159,8 +159,11 @@ impl Default for Configuration {
 }
 
 pub struct Storable {
-    pub credentials: Credentials,
-    pub configuration: Configuration,
+    rx1_data_rate_offset: Option<u8>,
+    rx_delay: Option<u8>,
+    rx2_data_rate: Option<DR>,
+    rx2_frequency: Option<u32>,
+    dev_nonce: u16,
 }
 impl TryFrom<&[u8]> for Storable {
     type Error = ();
@@ -198,19 +201,33 @@ where
         &mut self,
     ) -> Result<(), <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error> {
         let storable = Storable {
-            credentials: self.credentials().clone(),
-            configuration: self.configuration().clone(),
+            rx1_data_rate_offset: self.configuration().rx1_data_rate_offset,
+            rx_delay: self.configuration().rx_delay,
+            rx2_data_rate: self.configuration().rx2_data_rate,
+            rx2_frequency: self.configuration().rx2_frequency,
+            dev_nonce: self.credentials().dev_nonce,
         };
         self.non_volatile_store().save(storable)?;
         Ok(())
     }
     fn hydrate_from_non_volatile(
-        &mut self,
-    ) -> Result<(), <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error> {
-        let storable: Storable = self.non_volatile_store().load()?;
-        self.set_credentials(storable.credentials);
-        self.set_configuration(storable.configuration);
-        Ok(())
+        non_volatile_store: &mut Self::NonVolatileStore,
+        app_eui: [u8; 8],
+        dev_eui: [u8; 8],
+        app_key: AES128,
+    ) -> Result<
+        (Configuration, Credentials),
+        <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error,
+    > {
+        let storable: Storable = non_volatile_store.load()?;
+        let mut configuration: Configuration = Default::default();
+        configuration.rx1_data_rate_offset = storable.rx1_data_rate_offset;
+        configuration.rx_delay = storable.rx_delay;
+        configuration.rx2_data_rate = storable.rx2_data_rate;
+        configuration.rx2_frequency = storable.rx2_frequency;
+        let mut credentials = Credentials::new(app_eui, dev_eui, app_key);
+        credentials.dev_nonce = storable.dev_nonce;
+        Ok((configuration, credentials))
     }
     fn get_max_eirp(&self) -> i8 {
         min(R::max_eirp(), Self::max_eirp())
