@@ -85,16 +85,16 @@ impl crate::mac::Region for Eu868 {
     fn default_coding_rate() -> CodingRate {
         CodingRate::_4_5
     }
-    fn max_eirp() -> i8 {
+    fn max_eirp() -> u8 {
         16
     }
     fn supports_tx_param_setup() -> bool {
         false
     }
 
-    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, Error> {
+    fn modify_dbm(tx_power: u8, cur_dbm: Option<u8>, max_eirp: u8) -> Result<Option<u8>, Error> {
         match tx_power {
-            0..=7 => Ok(Some(max_eirp - (tx_power * 2) as i8)),
+            0..=7 => Ok(Some(max_eirp - (tx_power * 2) as u8)),
             15 => Ok(cur_dbm),
             _ => Err(Error::InvalidTxPower),
         }

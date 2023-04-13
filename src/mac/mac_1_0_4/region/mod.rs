@@ -27,13 +27,13 @@ pub trait Region {
     fn default_coding_rate() -> CodingRate;
     fn default_rx2_frequency() -> u32;
     fn default_rx2_data_rate() -> DR;
-    fn max_eirp() -> i8;
+    fn max_eirp() -> u8;
     fn min_frequency() -> u32;
     fn max_frequency() -> u32;
     fn convert_data_rate(dr: DR) -> Result<Datarate, Error>;
     fn get_receive_window(rx_dr_offset: DR, downstream_dr: DR) -> DR;
     fn supports_tx_param_setup() -> bool;
-    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, Error>;
+    fn modify_dbm(tx_power: u8, cur_dbm: Option<u8>, max_eirp: u8) -> Result<Option<u8>, Error>;
 
     fn default_rx_delay() -> u16 {
         1000

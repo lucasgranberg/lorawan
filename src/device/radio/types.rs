@@ -42,7 +42,7 @@ pub struct Datarate {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
 pub struct TxConfig {
-    pub pw: i8,
+    pub pw: u8,
     pub rf: RfConfig,
 }
 

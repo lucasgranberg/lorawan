@@ -35,7 +35,7 @@ pub trait Device {
 
     // save bytes to specific address or let device know about credential and configuration
     fn non_volatile_store(&mut self) -> &mut Self::NonVolatileStore;
-    fn max_eirp() -> i8;
+    fn max_eirp() -> u8;
     fn handle_device_time(&mut self, _seconds: u32, _nano_seconds: u32) {
         // default do nothing
     }

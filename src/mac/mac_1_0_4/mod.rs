@@ -134,7 +134,7 @@ impl Credentials {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Configuration {
     max_duty_cycle: f32,
-    tx_power: Option<i8>,
+    tx_power: Option<u8>,
     tx_data_rate: Option<DR>,
     rx1_data_rate_offset: Option<u8>,
     rx_delay: Option<u8>,
@@ -231,10 +231,10 @@ where
         credentials.dev_nonce = storable.dev_nonce;
         Ok((configuration, credentials))
     }
-    fn get_max_eirp(&self) -> i8 {
+    fn get_max_eirp(&self) -> u8 {
         min(R::max_eirp(), Self::max_eirp())
     }
-    fn get_tx_pwr(&mut self, frame: Frame) -> i8 {
+    fn get_tx_pwr(&mut self, frame: Frame) -> u8 {
         match frame {
             Frame::Join => self.get_max_eirp(),
             Frame::Data => self.configuration().tx_power.unwrap_or(self.get_max_eirp()),
