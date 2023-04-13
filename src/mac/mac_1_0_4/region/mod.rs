@@ -38,9 +38,7 @@ pub trait Region {
     fn default_rx_delay() -> u16 {
         1000
     }
-    fn default_rx1_data_rate_offset() -> DR {
-        DR::_0
-    }
+    fn default_rx1_data_rate_offset() -> u8;
     fn default_join_accept_delay1() -> u16 {
         5000
     }

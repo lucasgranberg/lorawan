@@ -271,13 +271,17 @@ where
             .tx_data_rate
             .unwrap_or(R::default_data_rate())
     }
+    fn rx1_data_rate_offset(&mut self) -> u8 {
+        self.configuration()
+            .rx1_data_rate_offset
+            .unwrap_or(R::default_rx1_data_rate_offset())
+    }
     fn rx1_data_rate(&mut self, tx_dr: DR) -> DR {
-        if let Some(rx1_data_rate_offset) = self.configuration().rx1_data_rate_offset {
-            (tx_dr as u8 + rx1_data_rate_offset)
-                .try_into()
-                .unwrap_or(tx_dr)
+        let offset = self.rx1_data_rate_offset();
+        if offset < tx_dr as u8 {
+            (tx_dr as u8 - offset).try_into().unwrap_or(tx_dr)
         } else {
-            tx_dr
+            DR::_0
         }
     }
     fn rx2_data_rate(&mut self, frame: &Frame) -> DR {
@@ -294,8 +298,7 @@ where
         frequency_range.contains(&frequency)
     }
     fn validate_rx1_data_rate_offset(&mut self, rx1_dr_offset: u8) -> bool {
-        let new_dr = self.tx_data_rate() as u8 + rx1_dr_offset;
-        self.validate_data_rate(new_dr)
+        (0u8..=5u8).contains(&rx1_dr_offset)
     }
     fn validate_data_rate(&self, dr: u8) -> bool {
         ((self.min_data_rate() as u8)..=(self.max_data_rate() as u8)).contains(&dr)

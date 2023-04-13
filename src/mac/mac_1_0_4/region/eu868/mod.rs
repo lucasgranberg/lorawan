@@ -45,8 +45,8 @@ impl crate::mac::Region for Eu868 {
         DR::_0
     }
 
-    fn default_rx1_data_rate_offset() -> DR {
-        DR::_0
+    fn default_rx1_data_rate_offset() -> u8 {
+        0
     }
 
     fn convert_data_rate(dr: DR) -> Result<Datarate, super::Error> {
