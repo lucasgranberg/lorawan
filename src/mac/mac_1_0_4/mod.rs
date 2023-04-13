@@ -323,7 +323,8 @@ where
     channel_plan: C,
     region: PhantomData<R>,
     device: PhantomData<D>,
-    cmds: Vec<UplinkMacCommandCreator, 15>,
+    uplink_cmds: Vec<UplinkMacCommandCreator, 15>,
+    ack_next: bool,
 }
 impl<R, D, C> Default for Mac<R, D, C>
 where
@@ -347,7 +348,8 @@ where
             channel_plan: Default::default(),
             region: PhantomData::default(),
             device: PhantomData::default(),
-            cmds: Vec::new(),
+            uplink_cmds: Vec::new(),
+            ack_next: false,
         }
     }
     pub fn is_joined(&self) -> bool {
@@ -716,7 +718,7 @@ where
                 fctrl.set_adr();
             }
 
-            if confirmed {
+            if self.ack_next {
                 fctrl.set_ack();
             }
 
@@ -728,7 +730,7 @@ where
                 .set_fcnt(fcnt);
 
             let mut dyn_cmds: Vec<&dyn SerializableMacCommand, 8> = Vec::new();
-            for cmd in self.cmds.iter() {
+            for cmd in self.uplink_cmds.iter() {
                 if let Err(_e) = dyn_cmds.push(cmd) {
                     panic!("dyn_cmds too small compared to cmds")
                 }
@@ -871,6 +873,8 @@ where
         }
         self.prepare_buffer(data, fport, confirmed, radio_buffer, device, DefaultFactory)?;
         let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
+        self.ack_next = false;
+        self.uplink_cmds.clear();
         // Handle received data
         if let Some(ref mut session_data) = self.session {
             // Parse payload and copy into user bufer is provided
@@ -880,7 +884,8 @@ where
                     Ok(PhyPayload::Data(encrypted_data)) => {
                         if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
                             let fcnt = encrypted_data.fhdr().fcnt() as u32;
-                            let _confirmed = encrypted_data.is_confirmed();
+                            // use temporary variable for ack_next to only confirm if the message was correctly handled
+                            let ack_next = encrypted_data.is_confirmed();
                             if encrypted_data.validate_mic(session_data.newskey(), fcnt)
                                 && (fcnt > session_data.fcnt_down || fcnt == 0)
                             {
@@ -895,14 +900,13 @@ where
                                 )
                                 .unwrap();
 
-                                self.cmds.clear(); //clear cmd buffer
                                 defmt::trace!("fhdr {:?}", decrypted.fhdr().0);
                                 self.handle_downlink_macs(
                                     device,
                                     rx_quality,
                                     (&decrypted.fhdr()).into(),
                                 )?;
-                                match decrypted.frm_payload().map_err(Error::Encoding)? {
+                                let res = match decrypted.frm_payload().map_err(Error::Encoding)? {
                                     FRMPayload::MACCommands(mac_cmds) => {
                                         self.handle_downlink_macs(
                                             device,
@@ -921,7 +925,11 @@ where
                                         }
                                     }
                                     FRMPayload::None => Ok(Some((0, rx_quality))),
+                                };
+                                if res.is_ok() {
+                                    self.ack_next = ack_next;
                                 }
+                                res
                             } else {
                                 Err(Error::Mac(crate::mac::Error::InvalidMic))
                             }
@@ -935,8 +943,6 @@ where
             } else if confirmed {
                 Err(Error::Mac(super::Error::NoResponse))
             } else {
-                //increment fcnt even when no data is received
-                session_data.fcnt_up_increment();
                 Ok(None)
             }
         } else {
