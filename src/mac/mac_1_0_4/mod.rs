@@ -280,10 +280,14 @@ where
             tx_dr
         }
     }
-    fn rx2_data_rate(&mut self) -> DR {
-        self.configuration()
+    fn rx2_data_rate(&mut self, frame: &Frame) -> DR {
+        match frame {
+            Frame::Join => R::default_rx2_data_rate(),
+            Frame::Data => self
+                .configuration()
             .rx2_data_rate
-            .unwrap_or(R::default_rx2_data_rate())
+                .unwrap_or(R::default_rx2_data_rate()),
+        }
     }
     fn validate_frequency(&self, frequency: u32) -> bool {
         let frequency_range = self.min_frequency()..self.max_frequency();
@@ -426,7 +430,7 @@ where
     ) -> Result<RfConfig, Error<D>> {
         let data_rate = match window {
             Window::_1 => device.rx1_data_rate(data_rate),
-            Window::_2 => device.rx2_data_rate(),
+            Window::_2 => device.rx2_data_rate(frame),
         };
         let data_rate = R::convert_data_rate(data_rate).map_err(Error::Region)?;
         let rf_config = match (frame, window) {
