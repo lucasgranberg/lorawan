@@ -96,6 +96,7 @@ macro_rules! mac_cmds_enum {
     }
     ) => {
         #[derive(Debug, PartialEq)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         $outer_vis enum $outer_type$(<$outer_lifetime>)* {
             $(
                 $name($type$(<$lifetime>)*),

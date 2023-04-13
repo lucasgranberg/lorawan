@@ -103,6 +103,8 @@ macro_rules! mac_cmds_creator_enum {
     }
     ) => {
         #[allow(dead_code)]
+        #[derive(Debug)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         $outer_vis enum $outer_type$(<$outer_lifetime>)* {
             $(
                 $name(concat_idents!($name,Creator)),
@@ -155,6 +157,7 @@ pub(crate) use mac_cmds_creator_enum;
 /// ```
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkCheckReqCreator {}
 
 impl_mac_cmd_creator_boilerplate!(LinkCheckReqCreator, 0x02);
@@ -169,6 +172,7 @@ impl_mac_cmd_creator_boilerplate!(LinkCheckReqCreator, 0x02);
 /// ```
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkCheckAnsCreator {
     data: [u8; 3],
 }
@@ -218,6 +222,7 @@ impl LinkCheckAnsCreator {
 /// ```
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkADRReqCreator {
     data: [u8; 5],
 }
@@ -297,6 +302,7 @@ impl LinkADRReqCreator {
 /// ```
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkADRAnsCreator {
     data: [u8; 2],
 }
@@ -351,6 +357,7 @@ impl LinkADRAnsCreator {
 /// ```
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DutyCycleReqCreator {
     data: [u8; 2],
 }
@@ -381,6 +388,7 @@ impl DutyCycleReqCreator {
 /// ```
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DutyCycleAnsCreator {}
 
 impl_mac_cmd_creator_boilerplate!(DutyCycleAnsCreator, 0x04);
@@ -397,6 +405,7 @@ impl_mac_cmd_creator_boilerplate!(DutyCycleAnsCreator, 0x04);
 ///     .build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct RXParamSetupReqCreator {
     data: [u8; 5],
 }
@@ -444,6 +453,7 @@ impl RXParamSetupReqCreator {
 ///     .build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct RXParamSetupAnsCreator {
     data: [u8; 2],
 }
@@ -497,6 +507,7 @@ impl RXParamSetupAnsCreator {
 /// let res = creator.build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DevStatusReqCreator {}
 
 impl_mac_cmd_creator_boilerplate!(DevStatusReqCreator, 0x06);
@@ -510,6 +521,7 @@ impl_mac_cmd_creator_boilerplate!(DevStatusReqCreator, 0x06);
 /// let res = creator.set_battery(0xfe).set_margin(-32).unwrap().build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DevStatusAnsCreator {
     data: [u8; 3],
 }
@@ -559,6 +571,7 @@ impl DevStatusAnsCreator {
 ///     .build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct NewChannelReqCreator {
     data: [u8; 6],
 }
@@ -615,6 +628,7 @@ impl NewChannelReqCreator {
 ///     .build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct NewChannelAnsCreator {
     data: [u8; 2],
 }
@@ -656,6 +670,7 @@ impl NewChannelAnsCreator {
 /// let res = creator.set_delay(0x0f).unwrap().build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct RXTimingSetupReqCreator {
     data: [u8; 2],
 }
@@ -688,25 +703,30 @@ impl RXTimingSetupReqCreator {
 /// let res = creator.build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct RXTimingSetupAnsCreator {}
 impl_mac_cmd_creator_boilerplate!(RXTimingSetupAnsCreator, 0x08);
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TXParamSetupReqCreator {
     data: [u8; 1],
 }
 impl_mac_cmd_creator_boilerplate!(TXParamSetupReqCreator, 0x09, 1);
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TXParamSetupAnsCreator;
 impl_mac_cmd_creator_boilerplate!(TXParamSetupAnsCreator, 0x09);
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DlChannelReqCreator {
     data: [u8; 4],
 }
 impl_mac_cmd_creator_boilerplate!(DlChannelReqCreator, 0x0A, 4);
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DlChannelAnsCreator {
     data: [u8; 2],
 }
@@ -737,9 +757,11 @@ impl DlChannelAnsCreator {
     }
 }
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceTimeReqCreator;
 impl_mac_cmd_creator_boilerplate!(DeviceTimeReqCreator, 0x0D);
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceTimeAnsCreator {
     data: [u8; 5],
 }

@@ -441,6 +441,7 @@ where
         let mut channel_mask = self.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
         while let Some(cmd) = cmd_iter.next() {
+            defmt::trace!("hadling command {:?}", cmd);
             let res: Option<UplinkMacCommandCreator> = match cmd {
                 DownlinkMacCommand::LinkCheckAns(payload) => {
                     device.handle_link_check(payload.gateway_count(), payload.margin());
@@ -598,15 +599,13 @@ where
                 }
             };
             if let Some(uplink_cmd) = res {
-                self.add_uplink_cmd(uplink_cmd)?
+                defmt::trace!("answer {:?}", uplink_cmd);
+                self.uplink_cmds
+                    .push(uplink_cmd)
+                    .map_err(|_| Error::Mac(crate::mac::Error::FOptsFull))?
             }
         }
         Ok(())
-    }
-    fn add_uplink_cmd(&mut self, cmd: UplinkMacCommandCreator) -> Result<(), Error<D>> {
-        self.cmds
-            .push(cmd)
-            .map_err(|_| Error::Mac(crate::mac::Error::FOptsFull))
     }
 
     async fn rx_with_timeout<'m>(
