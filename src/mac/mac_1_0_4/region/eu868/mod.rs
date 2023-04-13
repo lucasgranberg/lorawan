@@ -29,7 +29,7 @@ impl crate::mac::Region for Eu868 {
     }
 
     fn max_data_rate() -> DR {
-        DR::_7
+        DR::_6
     }
     fn min_data_rate_join_req() -> DR {
         DR::_0
