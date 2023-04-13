@@ -38,6 +38,7 @@ where
     fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), Error>;
     fn handle_dl_channel_req(&mut self, payload: DlChannelReqPayload) -> Result<(), Error>;
     fn handle_cf_list(&mut self, cf_list: CfList) -> Result<(), Error>;
+    fn validate_frequency(&self, frequency: u32) -> Result<(), Error>;
 }
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicChannel {
@@ -209,5 +210,16 @@ where
         } else {
             Err(Error::InvalidCfListType)
         }
+    }
+
+    fn validate_frequency(&self, frequency: u32) -> Result<(), Error> {
+        for channel in self.channels.iter() {
+            if let Some(ch) = channel {
+                if ch.get_frequency().value() == frequency {
+                    return Ok(());
+                }
+            }
+        }
+        Err(Error::InvalidFrequency)
     }
 }

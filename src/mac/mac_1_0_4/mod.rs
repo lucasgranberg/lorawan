@@ -139,6 +139,7 @@ pub struct Configuration {
     rx1_data_rate_offset: Option<u8>,
     rx_delay: Option<u8>,
     rx2_data_rate: Option<DR>,
+    rx2_frequency: Option<u32>,
     number_of_transmissions: u8,
 }
 
@@ -151,6 +152,7 @@ impl Default for Configuration {
             rx1_data_rate_offset: None,
             rx_delay: None,
             rx2_data_rate: None,
+            rx2_frequency: None,
             number_of_transmissions: 1,
         }
     }
@@ -517,10 +519,18 @@ where
                     let mut ans = RXParamSetupAnsCreator::new();
                     let (mut rx1_data_rate_offset_ack, mut rx2_data_rate_ack) =
                         device.validata_dl_settings(payload.dl_settings());
-
+                    let channel_ack = self
+                        .channel_plan
+                        .validate_frequency(payload.frequency().value())
+                        .is_ok();
+                    if channel_ack && rx1_data_rate_offset_ack && rx2_data_rate_ack {
                     if device.handle_dl_settings(payload.dl_settings()).is_err() {
                         rx1_data_rate_offset_ack = false;
                         rx2_data_rate_ack = false;
+                        } else {
+                            device.configuration().rx2_frequency =
+                                Some(payload.frequency().value());
+                        }
                     }
                     ans.set_rx1_data_rate_offset_ack(rx1_data_rate_offset_ack);
                     ans.set_rx2_data_rate_ack(rx2_data_rate_ack);

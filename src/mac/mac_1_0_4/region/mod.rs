@@ -11,6 +11,7 @@ pub enum Error {
     InvalidTxPower,
     InvalidChannelIndex,
     InvalidChannelMaskCtrl,
+    InvalidFrequency,
     DataRateNotSupported(DR),
     NoValidChannelFound,
     InvalidCfListType,
