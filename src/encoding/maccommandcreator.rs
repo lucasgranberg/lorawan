@@ -126,7 +126,7 @@ macro_rules! mac_cmds_creator_enum {
         }
         impl SerializableMacCommand for $outer_type$(<$outer_lifetime>)* {
             fn payload_bytes(&self) -> &[u8] {
-                self.bytes()
+                &self.bytes()[1..]
             }
 
             fn cid(&self) -> u8 {
@@ -138,7 +138,7 @@ macro_rules! mac_cmds_creator_enum {
             }
 
             fn payload_len(&self) -> usize {
-                self.len()
+                self.len()-1
             }
         }
     }
