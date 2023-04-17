@@ -107,6 +107,10 @@ impl Session {
     pub fn fcnt_up_increment(&mut self) {
         self.fcnt_up += 1;
     }
+
+    pub fn is_expired(&self) -> bool {
+        self.fcnt_up() >= 0xFFFF
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
@@ -354,15 +358,16 @@ where
     pub fn new() -> Self {
         Self {
             session: None,
-            channel_plan: Default::default(),
-            region: PhantomData::default(),
-            device: PhantomData::default(),
-            uplink_cmds: Vec::new(),
             ack_next: false,
+            ..Default::default()
         }
     }
     pub fn is_joined(&self) -> bool {
-        self.session.is_some()
+        if let Some(session) = &self.session {
+            session.is_expired()
+        } else {
+            false
+        }
     }
 
     pub(crate) fn create_join_request<const N: usize>(
@@ -876,22 +881,35 @@ where
         rx: Option<&mut [u8]>,
     ) -> Result<Option<(usize, RxQuality)>, Error<D>> {
         if let Some(ref mut session_data) = self.session {
+            if !session_data.is_expired() {
             session_data.fcnt_up_increment();
+        } else {
+                return Err(Error::Mac(crate::mac::Error::SessionExpired));
+            }
         } else {
             return Err(Error::Mac(crate::mac::Error::NetworkNotJoined));
         }
         self.prepare_buffer(data, fport, confirmed, radio_buffer, device, DefaultFactory)?;
         let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
         self.ack_next = false;
-        self.uplink_cmds.clear();
+        // Some commands have different ack meechanism
+        // ACK needs to be sent until there is a downlink
+        self.uplink_cmds.retain(|cmd| match cmd {
+            UplinkMacCommandCreator::RXParamSetupAns(_) => true,
+            UplinkMacCommandCreator::RXTimingSetupAns(_) => true,
+            UplinkMacCommandCreator::DlChannelAns(_) => true,
+            UplinkMacCommandCreator::TXParamSetupAns(_) => true,
+            _ => false,
+        });
         // Handle received data
         if let Some(ref mut session_data) = self.session {
             // Parse payload and copy into user bufer is provided
             if let Some((_, rx_quality)) = rx_res {
-                let res = parse_with_factory(radio_buffer.as_mut(), DefaultFactory);
-                match res {
+                match parse_with_factory(radio_buffer, DefaultFactory) {
                     Ok(PhyPayload::Data(encrypted_data)) => {
                         if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
+                            // clear all uplink cmds here after successfull downlink
+                            self.uplink_cmds.clear();
                             let fcnt = encrypted_data.fhdr().fcnt() as u32;
                             // use temporary variable for ack_next to only confirm if the message was correctly handled
                             let ack_next = encrypted_data.is_confirmed();
