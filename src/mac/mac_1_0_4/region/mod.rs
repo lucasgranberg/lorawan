@@ -1,3 +1,4 @@
+use crate::device::Device;
 use crate::{
     device::radio::types::{CodingRate, Datarate},
     DR,
@@ -15,6 +16,14 @@ pub enum Error {
     DataRateNotSupported(DR),
     NoValidChannelFound,
     InvalidCfListType,
+}
+impl<D> From<Error> for super::Error<D>
+where
+    D: Device,
+{
+    fn from(value: Error) -> Self {
+        Self::Region(value)
+    }
 }
 pub trait Region {
     fn default_channels() -> u8;

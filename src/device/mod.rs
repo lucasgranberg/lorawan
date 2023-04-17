@@ -24,6 +24,14 @@ where
     NonVolatileStore(<<D as Device>::NonVolatileStore as NonVolatileStore>::Error),
     RadioBuffer(radio_buffer::Error),
 }
+impl<D> From<Error<D>> for super::Error<D>
+where
+    D: Device,
+{
+    fn from(value: Error<D>) -> Self {
+        Self::Device(value)
+    }
+}
 pub trait Device {
     type Timer: Timer;
     type Radio: Radio;

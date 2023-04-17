@@ -1,3 +1,5 @@
+use crate::device::Device;
+
 pub mod default_crypto;
 pub mod keys;
 pub mod maccommandcreator;
@@ -25,4 +27,12 @@ pub enum Error {
     MacCommandTooBigForFOpts,
     DataAndMacCommandsInPayloadNotAllowed,
     FRMPayloadWithFportZero,
+}
+impl<D> From<Error> for super::Error<D>
+where
+    D: Device,
+{
+    fn from(value: Error) -> Self {
+        Self::Encoding(value)
+    }
 }

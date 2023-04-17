@@ -23,6 +23,14 @@ pub enum Error {
     FOptsFull,
     NoValidChannelFound,
 }
+impl<D> From<Error> for super::Error<D>
+where
+    D: Device,
+{
+    fn from(value: Error) -> Self {
+        Self::Mac(value)
+    }
+}
 pub trait Mac<R, D>
 where
     R: Region,
