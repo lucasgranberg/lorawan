@@ -295,7 +295,7 @@ where
             Frame::Join => R::default_rx2_data_rate(),
             Frame::Data => self
                 .configuration()
-            .rx2_data_rate
+                .rx2_data_rate
                 .unwrap_or(R::default_rx2_data_rate()),
         }
     }
@@ -557,9 +557,9 @@ where
                         .validate_frequency(payload.frequency().value())
                         .is_ok();
                     if channel_ack && rx1_data_rate_offset_ack && rx2_data_rate_ack {
-                    if device.handle_dl_settings(payload.dl_settings()).is_err() {
-                        rx1_data_rate_offset_ack = false;
-                        rx2_data_rate_ack = false;
+                        if device.handle_dl_settings(payload.dl_settings()).is_err() {
+                            rx1_data_rate_offset_ack = false;
+                            rx2_data_rate_ack = false;
                         } else {
                             device.configuration().rx2_frequency =
                                 Some(payload.frequency().value());
@@ -869,8 +869,8 @@ where
     ) -> Result<Option<(usize, RxQuality)>, Error<D>> {
         if let Some(ref mut session_data) = self.session {
             if !session_data.is_expired() {
-            session_data.fcnt_up_increment();
-        } else {
+                session_data.fcnt_up_increment();
+            } else {
                 return Err(Error::Mac(crate::mac::Error::SessionExpired));
             }
         } else {
@@ -995,5 +995,173 @@ where
         rx: Option<&'m mut [u8]>,
     ) -> Self::SendFuture<'m> {
         self.send_inner(device, radio_buffer, data, fport, confirmed, rx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core::convert::Infallible;
+
+    use super::region::channel_plan::DynamicChannelPlan;
+    use super::region::eu868::Eu868;
+    use super::*;
+    #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    struct TestTimer;
+    impl Timer for TestTimer {
+        type Error = Infallible;
+
+        fn reset(&mut self) {
+            todo!()
+        }
+
+        type AtFuture<'a> = impl Future<Output = ()> + 'a where Self: 'a;
+
+        fn at<'a>(&self, _millis: u64) -> Result<Self::AtFuture<'a>, Self::Error> {
+            let fut = async move {};
+            Ok(fut) as Result<Self::AtFuture<'a>, Infallible>
+        }
+    }
+    #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    struct TestRadio;
+    impl Radio for TestRadio {
+        type Error = Infallible;
+
+        type TxFuture<'m> = impl Future<Output = Result<usize, Self::Error>> + 'm where Self: 'm;
+
+        fn tx<'m>(&'m mut self, _config: TxConfig, _buf: &'m [u8]) -> Self::TxFuture<'m> {
+            async { Ok(0 as usize) }
+        }
+
+        type RxFuture<'m> = impl Future<Output = Result<(usize, RxQuality), Self::Error>> + 'm  where Self: 'm;
+
+        fn rx<'m>(&'m mut self, _config: RfConfig, _rx_buf: &'m mut [u8]) -> Self::RxFuture<'m> {
+            let rx_quality = RxQuality { rssi: 0, snr: 0 };
+            async move { Ok((0 as usize, rx_quality)) }
+        }
+    }
+
+    #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    struct TestRng;
+    impl Rng for TestRng {
+        type Error = Infallible;
+
+        fn next_u32(&mut self) -> Result<u32, Self::Error> {
+            Ok(42)
+        }
+    }
+    #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    struct TestNonVolatileStore;
+    impl NonVolatileStore for TestNonVolatileStore {
+        type Error = Infallible;
+
+        fn save<'a, T>(&mut self, _item: T) -> Result<(), Self::Error>
+        where
+            T: Sized + Into<&'a [u8]>,
+        {
+            todo!()
+        }
+
+        fn load<'a, T>(&'a mut self) -> Result<T, Self::Error>
+        where
+            T: Sized + TryFrom<&'a [u8]>,
+        {
+            todo!()
+        }
+    }
+    #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    struct TestDevice {
+        timer: TestTimer,
+        radio: TestRadio,
+        rng: TestRng,
+        non_volatile_store: TestNonVolatileStore,
+        configuration: Configuration,
+        credentials: Credentials,
+    }
+    impl Device for TestDevice {
+        type Timer = TestTimer;
+
+        type Radio = TestRadio;
+
+        type Rng = TestRng;
+
+        type NonVolatileStore = TestNonVolatileStore;
+
+        fn timer(&mut self) -> &mut Self::Timer {
+            &mut self.timer
+        }
+
+        fn radio(&mut self) -> &mut Self::Radio {
+            &mut self.radio
+        }
+
+        fn rng(&mut self) -> &mut Self::Rng {
+            &mut self.rng
+        }
+
+        fn non_volatile_store(&mut self) -> &mut Self::NonVolatileStore {
+            &mut self.non_volatile_store
+        }
+
+        fn max_eirp() -> u8 {
+            22
+        }
+
+        fn adaptive_data_rate_enabled(&self) -> bool {
+            true
+        }
+    }
+    impl MacDevice<Eu868> for TestDevice {
+        fn credentials(&mut self) -> &mut Credentials {
+            &mut self.credentials
+        }
+
+        fn configuration(&mut self) -> &mut Configuration {
+            &mut self.configuration
+        }
+
+        fn set_credentials(&mut self, credentials: Credentials) {
+            self.credentials = credentials
+        }
+
+        fn set_configuration(&mut self, configuration: Configuration) {
+            self.configuration = configuration
+        }
+    }
+    #[test]
+    fn mac_command_link_adr_req() {
+        let mut mac: Mac<Eu868, TestDevice, DynamicChannelPlan<Eu868>> = Mac::new();
+        let mut device = TestDevice {
+            timer: TestTimer,
+            radio: TestRadio,
+            rng: TestRng,
+            non_volatile_store: TestNonVolatileStore,
+            credentials: Credentials::new(
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                AES128([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            ),
+            configuration: Default::default(),
+        };
+
+        let data = [77, 251, 3, 224, 165, 0, 0, 0x03, 0x50, 0xff, 0x00, 0x01];
+        let fhdr: crate::encoding::parser::FHDR<'_> = crate::encoding::parser::FHDR(&data, true);
+        let iterator: MacCommandIterator<'_, DownlinkMacCommand> = (&fhdr).into();
+        let rx_quality = RxQuality { rssi: 0, snr: 0 };
+
+        let res = mac.handle_downlink_macs(&mut device, rx_quality, iterator);
+        println!("{:?}", mac.uplink_cmds);
+        assert!(res.is_ok());
+        assert!(mac.uplink_cmds.len() == 1);
+        if let UplinkMacCommandCreator::LinkADRAns(creator) = mac.uplink_cmds.first().unwrap() {
+            assert_eq!(creator.payload_bytes(), [0x07]);
+        } else {
+            assert!(false);
+        }
+        assert!(mac.uplink_cmds.len() == 1);
     }
 }
