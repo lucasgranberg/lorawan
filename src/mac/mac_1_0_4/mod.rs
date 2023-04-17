@@ -894,12 +894,14 @@ where
         self.ack_next = false;
         // Some commands have different ack meechanism
         // ACK needs to be sent until there is a downlink
-        self.uplink_cmds.retain(|cmd| match cmd {
-            UplinkMacCommandCreator::RXParamSetupAns(_) => true,
-            UplinkMacCommandCreator::RXTimingSetupAns(_) => true,
-            UplinkMacCommandCreator::DlChannelAns(_) => true,
-            UplinkMacCommandCreator::TXParamSetupAns(_) => true,
-            _ => false,
+        self.uplink_cmds.retain(|cmd| {
+            matches!(
+                cmd,
+                UplinkMacCommandCreator::RXParamSetupAns(_)
+                    | UplinkMacCommandCreator::RXTimingSetupAns(_)
+                    | UplinkMacCommandCreator::DlChannelAns(_)
+                    | UplinkMacCommandCreator::TXParamSetupAns(_)
+            )
         });
         // Handle received data
         if let Some(ref mut session_data) = self.session {

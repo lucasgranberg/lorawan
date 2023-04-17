@@ -94,7 +94,7 @@ impl crate::mac::Region for Eu868 {
 
     fn modify_dbm(tx_power: u8, cur_dbm: Option<u8>, max_eirp: u8) -> Result<Option<u8>, Error> {
         match tx_power {
-            0..=7 => Ok(Some(max_eirp - (tx_power * 2) as u8)),
+            0..=7 => Ok(Some(max_eirp - (tx_power * 2))),
             15 => Ok(cur_dbm),
             _ => Err(Error::InvalidTxPower),
         }
