@@ -186,12 +186,12 @@ impl<T: AsRef<[u8]>> DataHeader for DecryptedDataPayload<T> {
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>> DecryptedDataPayload<T> {
-    pub fn new_from_encrypted<'a, 'b, F: CryptoFactory>(
+    pub fn new_from_encrypted<'a, F: CryptoFactory>(
         encrypted: EncryptedDataPayload<T, F>,
         nwk_skey: Option<&'a AES128>,
         app_skey: Option<&'a AES128>,
         fcnt: u32,
-    ) -> Result<DecryptedDataPayload<T>, &'b str> {
+    ) -> Result<DecryptedDataPayload<T>, Error> {
         let fhdr_length = encrypted.fhdr_length();
         let fhdr = encrypted.fhdr();
 
@@ -202,7 +202,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> DecryptedDataPayload<T> {
             nwk_skey
         };
         if key.is_none() {
-            return Err("key needed to decrypt the frm data payload was None");
+            return Err(Error::InvalidKey);
         }
         let EncryptedDataPayload(mut data, factory) = encrypted;
         let len = data.as_ref().len();

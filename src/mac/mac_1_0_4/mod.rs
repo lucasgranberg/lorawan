@@ -668,11 +668,11 @@ where
             let open_fut = device
                 .timer()
                 .at(windows.get_open(&window) as u64)
-                .map_err(|e| crate::device::Error::Timer(e))?;
+                .map_err(crate::device::Error::Timer)?;
             let timeout_fut = device
                 .timer()
                 .at(windows.get_close(&window) as u64)
-                .map_err(|e| crate::device::Error::Timer(e))?;
+                .map_err(crate::device::Error::Timer)?;
             let rx_fut = device.radio().rx(rf_config, radio_buffer.as_raw_slice());
             pin_mut!(rx_fut);
             pin_mut!(timeout_fut);
@@ -753,7 +753,7 @@ where
             radio_buffer.clear();
             radio_buffer
                 .extend_from_slice(packet)
-                .map_err(|e| crate::device::Error::RadioBuffer(e))?;
+                .map_err(crate::device::Error::RadioBuffer)?;
             Ok(fcnt)
         } else {
             Err(Error::Mac(crate::mac::Error::NetworkNotJoined))
@@ -766,10 +766,7 @@ where
         frame: Frame,
     ) -> Result<Option<(usize, RxQuality)>, Error<D>> {
         for _ in 0..device.configuration().number_of_transmissions {
-            let random = device
-                .rng()
-                .next_u32()
-                .map_err(|e| crate::device::Error::Rng(e))?;
+            let random = device.rng().next_u32().map_err(crate::device::Error::Rng)?;
             let tx_data_rate = device.tx_data_rate();
             let channel = self
                 .channel_plan
@@ -782,7 +779,7 @@ where
                 .radio()
                 .tx(tx_config, radio_buffer.as_ref())
                 .await
-                .map_err(|e| crate::device::Error::Radio(e))?;
+                .map_err(crate::device::Error::Radio)?;
             device.timer().reset();
 
             // Receive join response within RX window

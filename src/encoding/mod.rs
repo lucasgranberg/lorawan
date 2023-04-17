@@ -20,6 +20,8 @@ pub enum Error {
     InvalidDataForJoinRequest,
     InvalidDataForEncryptedJoinAcceptPayload,
     InvalidDataForEncryptedDataPayload,
+    InvalidKey,
+    InvalidData,
     UnsupportedMessageType,
     PhyDataEmpty,
     InsufficeientNumberOfBytes,

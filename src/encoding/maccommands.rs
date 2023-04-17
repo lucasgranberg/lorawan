@@ -374,9 +374,9 @@ pub struct ChannelMask([u8; 2]);
 
 impl ChannelMask {
     /// Constructs a new ChannelMask from the provided data.
-    pub fn new(data: &[u8]) -> Result<Self, &str> {
+    pub fn new(data: &[u8]) -> Result<Self, Error> {
         if data.len() < 2 {
-            return Err("not enough bytes to read");
+            return Err(Error::InvalidData);
         }
         Ok(Self::new_from_raw(data))
     }
@@ -395,9 +395,9 @@ impl ChannelMask {
     }
 
     /// Verifies if a given channel is enabled.
-    pub fn is_enabled(&self, index: usize) -> Result<bool, &str> {
+    pub fn is_enabled(&self, index: usize) -> Result<bool, Error> {
         if index > 15 {
-            return Err("index should be between 0 and 15");
+            return Err(Error::InvalidData);
         }
         Ok(self.channel_enabled(index))
     }
@@ -551,9 +551,9 @@ impl defmt::Format for Frequency {
 
 impl Frequency {
     /// Constructs a new ChannelMask from the provided data.
-    pub fn new(data: &[u8]) -> Result<Self, &str> {
+    pub fn new(data: &[u8]) -> Result<Self, Error> {
         if data.len() < 2 {
-            return Err("not enough bytes to read");
+            return Err(Error::InvalidData);
         }
         Ok(Self::new_from_raw(data))
     }
