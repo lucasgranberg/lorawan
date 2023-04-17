@@ -5,15 +5,12 @@
 
 use core::fmt::Debug;
 
-use channel_mask::ChannelMask;
 use device::Device;
-use frequency::Frequency;
+use encoding::maccommands::{ChannelMask, Frequency};
 use mac::mac_1_0_4::region;
 
-pub mod channel_mask;
 pub mod device;
 pub mod encoding;
-pub mod frequency;
 pub mod mac;
 
 #[derive(Debug)]

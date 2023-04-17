@@ -1,14 +1,13 @@
 use generic_array::GenericArray;
 
+use crate::encoding::maccommands::{ChannelMask, Frequency};
 use crate::{
-    channel_mask::ChannelMask,
     encoding::{
         keys::{CryptoFactory, Encrypter, AES128, MIC},
         maccommands::DLSettings,
         parser::*,
         securityhelpers, Error,
     },
-    frequency::Frequency,
     CfList,
 };
 

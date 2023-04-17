@@ -190,8 +190,6 @@ macro_rules! mac_cmds_enum {
 }
 pub(crate) use mac_cmds_enum;
 
-use crate::{channel_mask::ChannelMask, frequency::Frequency};
-
 mac_cmd_zero_len! {
     /// LinkCheckReqPayload represents the LinkCheckReq LoRaWAN MACCommand.
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -370,6 +368,62 @@ impl<'a> LinkADRReqPayload<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ChannelMask([u8; 2]);
+
+impl ChannelMask {
+    /// Constructs a new ChannelMask from the provided data.
+    pub fn new(data: &[u8]) -> Result<Self, &str> {
+        if data.len() < 2 {
+            return Err("not enough bytes to read");
+        }
+        Ok(Self::new_from_raw(data))
+    }
+
+    /// Constructs a new ChannelMask from the provided data, without verifying if they are
+    /// admissible.
+    ///
+    /// Improper use of this method could lead to panic during runtime!
+    pub fn new_from_raw(data: &[u8]) -> Self {
+        let payload = [data[0], data[1]];
+        ChannelMask(payload)
+    }
+
+    fn channel_enabled(&self, index: usize) -> bool {
+        self.0[index >> 3] & (1 << (index & 0x07)) != 0
+    }
+
+    /// Verifies if a given channel is enabled.
+    pub fn is_enabled(&self, index: usize) -> Result<bool, &str> {
+        if index > 15 {
+            return Err("index should be between 0 and 15");
+        }
+        Ok(self.channel_enabled(index))
+    }
+
+    /// Provides information for each of the 16 channels if they are enabled.
+    pub fn statuses(&self) -> [bool; 16] {
+        let mut res = [false; 16];
+        for (i, c) in res.iter_mut().enumerate() {
+            *c = self.channel_enabled(i);
+        }
+        res
+    }
+}
+
+impl From<[u8; 2]> for ChannelMask {
+    fn from(v: [u8; 2]) -> Self {
+        ChannelMask(v)
+    }
+}
+
+impl AsRef<[u8]> for ChannelMask {
+    fn as_ref(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
+
 /// Redundancy represents the LinkADRReq Redundancy from LoRaWAN.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Redundancy(u8);
@@ -485,45 +539,58 @@ impl From<u8> for DLSettings {
     }
 }
 
-// /// Frequency represents a channel's central frequency.
-// #[derive(Debug, PartialEq, Eq)]
-// pub struct Frequency<'a>(&'a [u8]);
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Frequency([u8; 3]);
 
-// impl<'a> Frequency<'a> {
-//     /// Constructs a new Frequency from the provided bytes, without verifying if they are
-//     /// admissible.
-//     ///
-//     /// Improper use of this method could lead to panic during runtime!
-//     pub fn new_from_raw(bytes: &'a [u8]) -> Self {
-//         Frequency(bytes)
-//     }
+#[cfg(feature = "defmt")]
+impl defmt::Format for Frequency {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "Frequency({})", self.value())
+    }
+}
 
-//     /// Constructs a new Frequency from the provided bytes.
-//     pub fn new(bytes: &'a [u8]) -> Option<Self> {
-//         if bytes.len() != 3 {
-//             return None;
-//         }
+impl Frequency {
+    /// Constructs a new ChannelMask from the provided data.
+    pub fn new(data: &[u8]) -> Result<Self, &str> {
+        if data.len() < 2 {
+            return Err("not enough bytes to read");
+        }
+        Ok(Self::new_from_raw(data))
+    }
 
-//         Some(Frequency(bytes))
-//     }
+    /// Constructs a new ChannelMask from the provided data, without verifying if they are
+    /// admissible.
+    ///
+    /// Improper use of this method could lead to panic during runtime!
+    pub fn new_from_raw(data: &[u8]) -> Self {
+        let payload = [data[0], data[1], data[2]];
+        Self(payload)
+    }
 
-//     /// Provides the decimal value in Hz of the frequency.
-//     pub fn value(&self) -> u32 {
-//         ((u32::from(self.0[2]) << 16) + (u32::from(self.0[1]) << 8) + u32::from(self.0[0])) * 100
-//     }
-// }
+    pub fn new_from_value(value: &u32) -> Self {
+        let value = value / 100;
+        let data = value.to_le_bytes();
+        let payload = [data[0], data[1], data[2]];
+        Self(payload)
+    }
 
-// impl<'a> From<&'a [u8; 3]> for Frequency<'a> {
-//     fn from(v: &'a [u8; 3]) -> Self {
-//         Frequency(&v[..])
-//     }
-// }
+    /// Provides the decimal value in Hz of the frequency.
+    pub fn value(&self) -> u32 {
+        ((u32::from(self.0[2]) << 16) + (u32::from(self.0[1]) << 8) + u32::from(self.0[0])) * 100
+    }
+}
 
-// impl<'a> AsRef<[u8]> for Frequency<'a> {
-//     fn as_ref(&self) -> &[u8] {
-//         self.0
-//     }
-// }
+impl From<[u8; 3]> for Frequency {
+    fn from(v: [u8; 3]) -> Self {
+        Self(v)
+    }
+}
+
+impl AsRef<[u8]> for Frequency {
+    fn as_ref(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
 
 impl<'a> RXParamSetupAnsPayload<'a> {
     create_ack_fn!(

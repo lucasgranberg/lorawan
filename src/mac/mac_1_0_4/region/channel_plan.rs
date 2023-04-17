@@ -3,9 +3,7 @@ use core::marker::PhantomData;
 use heapless::Vec;
 
 use crate::{
-    channel_mask::ChannelMask,
-    encoding::maccommands::{DlChannelReqPayload, NewChannelReqPayload},
-    frequency::Frequency,
+    encoding::maccommands::{ChannelMask, DlChannelReqPayload, Frequency, NewChannelReqPayload},
     CfList, Frame, DR,
 };
 

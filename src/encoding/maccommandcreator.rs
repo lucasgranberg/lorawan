@@ -1,7 +1,5 @@
 use core::convert::Infallible;
 
-use crate::{channel_mask::ChannelMask, frequency::Frequency};
-
 use super::{maccommands::*, Error};
 macro_rules! impl_mac_cmd_creator_boilerplate {
     ($type:ident, $cid:expr) => {
