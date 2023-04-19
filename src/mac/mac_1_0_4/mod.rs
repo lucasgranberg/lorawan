@@ -309,7 +309,7 @@ where
     fn validate_data_rate(&self, dr: u8) -> bool {
         ((self.min_data_rate() as u8)..=(self.max_data_rate() as u8)).contains(&dr)
     }
-    fn validata_dl_settings(&mut self, dl_settings: DLSettings) -> (bool, bool) {
+    fn validate_dl_settings(&mut self, dl_settings: DLSettings) -> (bool, bool) {
         let rx1_data_rate_offset_ack =
             self.validate_rx1_data_rate_offset(dl_settings.rx1_dr_offset());
         let rx2_data_rate_ack = self.validate_data_rate(dl_settings.rx2_data_rate());
@@ -551,7 +551,7 @@ where
                 DownlinkMacCommand::RXParamSetupReq(payload) => {
                     let mut ans = RXParamSetupAnsCreator::new();
                     let (mut rx1_data_rate_offset_ack, mut rx2_data_rate_ack) =
-                        device.validata_dl_settings(payload.dl_settings());
+                        device.validate_dl_settings(payload.dl_settings());
                     let channel_ack = self
                         .channel_plan
                         .validate_frequency(payload.frequency().value())
@@ -830,7 +830,7 @@ where
                         self.session.replace(session);
 
                         let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
-                            device.validata_dl_settings(decrypt.dl_settings());
+                            device.validate_dl_settings(decrypt.dl_settings());
                         defmt::trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
                         if rx1_data_rate_offset_ack && rx2_data_rate_ack {
                             device.handle_dl_settings(decrypt.dl_settings())?
