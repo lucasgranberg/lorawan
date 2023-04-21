@@ -1,11 +1,6 @@
 use core::fmt::Debug;
-use futures::Future;
 
-use crate::device::radio::types::RxQuality;
-use crate::{
-    device::{radio_buffer::RadioBuffer, Device},
-    Window,
-};
+use crate::{device::Device, Window};
 
 use self::mac_1_0_4::region::Region;
 
@@ -30,38 +25,6 @@ where
     fn from(value: Error) -> Self {
         Self::Mac(value)
     }
-}
-pub trait Mac<R, D>
-where
-    R: Region,
-    D: Device,
-{
-    type Error;
-
-    type JoinFuture<'m>: Future<Output = Result<(), Self::Error>> + 'm
-    where
-        Self: 'm,
-        D: 'm;
-    type SendFuture<'m>: Future<Output = Result<Option<(usize, RxQuality)>, Self::Error>> + 'm
-    where
-        Self: 'm,
-        D: 'm;
-
-    fn join<'m>(
-        &'m mut self,
-        device: &'m mut D,
-        radio_buffer: &'m mut RadioBuffer<256>,
-    ) -> Self::JoinFuture<'m>;
-
-    fn send<'m>(
-        &'m mut self,
-        device: &'m mut D,
-        radio_buffer: &'m mut RadioBuffer<256>,
-        data: &'m [u8],
-        fport: u8,
-        confirmed: bool,
-        rx: Option<&'m mut [u8]>,
-    ) -> Self::SendFuture<'m>;
 }
 
 pub(crate) struct RxWindows {
