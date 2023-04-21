@@ -357,8 +357,11 @@ where
     pub fn new() -> Self {
         Self {
             session: None,
+            channel_plan: Default::default(),
+            region: PhantomData::default(),
+            device: PhantomData::default(),
+            uplink_cmds: Vec::new(),
             ack_next: false,
-            ..Default::default()
         }
     }
     pub fn is_joined(&self) -> bool {
