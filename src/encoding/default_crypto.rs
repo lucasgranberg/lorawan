@@ -5,9 +5,8 @@
 // copied, modified, or distributed except according to those terms.
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
-use aes::cipher::{BlockCipher, NewBlockCipher};
+use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
-use cmac::crypto_mac::NewMac;
 use generic_array::typenum::U16;
 use generic_array::GenericArray;
 
@@ -40,13 +39,13 @@ impl CryptoFactory for DefaultFactory {
 
 impl Encrypter for Aes128 {
     fn encrypt_block(&self, block: &mut GenericArray<u8, U16>) {
-        BlockCipher::encrypt_block(self, block);
+        <&Self as BlockEncrypt>::encrypt_block(&self, block);
     }
 }
 
 impl Decrypter for Aes128 {
     fn decrypt_block(&self, block: &mut GenericArray<u8, U16>) {
-        BlockCipher::decrypt_block(self, block);
+        <&Self as BlockDecrypt>::decrypt_block(&self, block);
     }
 }
 
