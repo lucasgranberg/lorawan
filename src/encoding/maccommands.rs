@@ -216,11 +216,6 @@ mac_cmd_zero_len! {
     #[derive(Debug, PartialEq, Eq)]
     struct TXParamSetupAnsPayload[cmd=TXParamSetupAns, cid=0x09, uplink=true]
 
-    /// DlChannelAnsPayload represents the DlChannelAns LoRaWAN MACCommand.
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-    #[derive(Debug, PartialEq, Eq)]
-    struct DlChannelAnsPayload[cmd=DlChannelAns, cid=0x0A, uplink=true]
-
     /// DeviceTimeReqPayload represents the DeviceTimeReq LoRaWAN MACCommand.
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug, PartialEq, Eq)]
@@ -287,6 +282,11 @@ mac_cmds! {
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug, PartialEq, Eq)]
     struct DlChannelReqPayload[cmd=DlChannelReq, cid=0x0A, uplink=false, size=4]
+
+    /// DlChannelAnsPayload represents the DlChannelAns LoRaWAN MACCommand.
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[derive(Debug, PartialEq, Eq)]
+    struct DlChannelAnsPayload[cmd=DlChannelAns, cid=0x0A, uplink=true, size=1]
 
     /// DeviceTimeAnsPayload represents the DeviceTimeAns LoRaWAN MACCommand.
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]

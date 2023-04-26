@@ -25,7 +25,7 @@ mac_cmds_enum! {
         NewChannelAns(NewChannelAnsPayload<'a>)
         RXTimingSetupAns(RXTimingSetupAnsPayload)
         TXParamSetupAns(TXParamSetupAnsPayload)
-        DlChannelAns(DlChannelAnsPayload)
+        DlChannelAns(DlChannelAnsPayload<'a>)
         DeviceTimeReq(DeviceTimeReqPayload)
     }
 }
