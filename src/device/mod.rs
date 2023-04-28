@@ -40,8 +40,6 @@ pub trait Device {
     fn timer(&mut self) -> &mut Self::Timer;
     fn radio(&mut self) -> &mut Self::Radio;
     fn rng(&mut self) -> &mut Self::Rng;
-
-    // save bytes to specific address or let device know about credential and configuration
     fn non_volatile_store(&mut self) -> &mut Self::NonVolatileStore;
     fn max_eirp() -> u8;
     fn handle_device_time(&mut self, _seconds: u32, _nano_seconds: u32) {
@@ -58,7 +56,9 @@ pub trait Device {
     fn battery_level(&self) -> Option<f32> {
         None
     }
+}
 
+pub trait DeviceSpecs {
     fn min_frequency() -> Option<u32> {
         None
     }
