@@ -4,6 +4,7 @@
 #![feature(concat_idents)]
 
 use core::fmt::Debug;
+mod fmt;
 
 use device::Device;
 use encoding::maccommands::{ChannelMask, Frequency};

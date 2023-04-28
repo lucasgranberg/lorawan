@@ -161,6 +161,8 @@ impl Default for Configuration {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Storable {
     rx1_data_rate_offset: Option<u8>,
     rx_delay: Option<u8>,
@@ -478,7 +480,7 @@ where
         let mut channel_mask = self.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
         while let Some(cmd) = cmd_iter.next() {
-            defmt::trace!("hadling command {:?}", cmd);
+            trace!("hadling command {:?}", cmd);
             let res: Option<UplinkMacCommandCreator> = match cmd {
                 DownlinkMacCommand::LinkCheckAns(payload) => {
                     device.handle_link_check(payload.gateway_count(), payload.margin());
@@ -643,7 +645,7 @@ where
                 }
             };
             if let Some(uplink_cmd) = res {
-                defmt::trace!("answer {:?}", uplink_cmd);
+                trace!("answer {:?}", uplink_cmd);
                 self.uplink_cmds
                     .push(uplink_cmd)
                     .map_err(|_| crate::mac::Error::FOptsFull)?
@@ -751,7 +753,7 @@ where
                 }
             }
             let packet = phy.build(data, &dyn_cmds, session.newskey(), session.appskey())?;
-            defmt::trace!("TX: {=[u8]:#02X}", packet);
+            trace!("TX: {=[u8]:#02X}", packet);
             radio_buffer.clear();
             radio_buffer
                 .extend_from_slice(packet)
@@ -775,7 +777,7 @@ where
                 .get_random_channel(random, frame, tx_data_rate)?;
 
             let tx_config = self.create_tx_config(device, frame, &channel)?;
-            defmt::trace!("tx config {:?}", tx_config);
+            trace!("tx config {:?}", tx_config);
             // Transmit the join payload
             let _ms = device
                 .radio()
@@ -823,17 +825,17 @@ where
                             ),
                             device.credentials(),
                         );
-                        defmt::trace!("msg {=[u8]:02X}", decrypt.as_bytes());
-                        defmt::trace!("new {=[u8]:02X}", session.newskey().0);
-                        defmt::trace!("app {=[u8]:02X}", session.appskey().0);
-                        defmt::trace!("rx1 {:?}", decrypt.dl_settings().rx1_dr_offset());
-                        defmt::trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
-                        defmt::trace!("rx2 {:?}", decrypt.c_f_list());
+                        trace!("msg {=[u8]:02X}", decrypt.as_bytes());
+                        trace!("new {=[u8]:02X}", session.newskey().0);
+                        trace!("app {=[u8]:02X}", session.appskey().0);
+                        trace!("rx1 {:?}", decrypt.dl_settings().rx1_dr_offset());
+                        trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
+                        trace!("rx2 {:?}", decrypt.c_f_list());
                         self.session.replace(session);
 
                         let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
                             device.validate_dl_settings(decrypt.dl_settings());
-                        defmt::trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
+                        trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
                         if rx1_data_rate_offset_ack && rx2_data_rate_ack {
                             device.handle_dl_settings(decrypt.dl_settings())?
                         }
@@ -918,7 +920,7 @@ where
                                 )
                                 .unwrap();
 
-                                defmt::trace!("fhdr {:?}", decrypted.fhdr().0);
+                                trace!("fhdr {:?}", decrypted.fhdr().0);
                                 self.handle_downlink_macs(
                                     device,
                                     rx_quality,
