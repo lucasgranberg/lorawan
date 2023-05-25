@@ -1,6 +1,68 @@
-use core::convert::Infallible;
+// Copyright (c) 2018-2020 Ivaylo Petrov
+//
+// Licensed under the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+//
+// Author: Ivaylo Petrov <ivajloip@gmail.com>
 
-use super::{maccommands::*, Error};
+use super::Error;
+
+use super::maccommands::*;
+
+macro_rules! mac_cmds_creator_enum {
+    (
+        $outer_vis:vis enum $outer_type:ident$(<$outer_lifetime:lifetime>),* {
+        $(
+            $name:ident
+        )*
+    }
+    ) => {
+        #[allow(dead_code)]
+        #[derive(Debug)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+        $outer_vis enum $outer_type$(<$outer_lifetime>)* {
+            $(
+                $name(concat_idents!($name,Creator)),
+            )*
+        }
+        #[allow(clippy::len_without_is_empty)]
+        impl$(<$outer_lifetime>)* $outer_type$(<$outer_lifetime>)* {
+            pub fn len(&self) -> usize {
+                match self {
+                    $(
+                        Self::$name(creator) => creator.len(),
+                    )*
+                }
+            }
+            pub fn build(&self) -> &[u8] {
+                match *self {
+                    $(
+                        Self::$name(ref v) => v.build(),
+                    )*
+                }
+            }
+        }
+        impl SerializableMacCommand for $outer_type$(<$outer_lifetime>)* {
+            fn payload_bytes(&self) -> &[u8] {
+                &self.build()[1..]
+            }
+
+            fn cid(&self) -> u8 {
+                match self {
+                    $(
+                        Self::$name(creator) => creator.cid(),
+                    )*
+                }
+            }
+
+            fn payload_len(&self) -> usize {
+                self.len() - 1
+            }
+        }
+    }
+}
+
 macro_rules! impl_mac_cmd_creator_boilerplate {
     ($type:ident, $cid:expr) => {
         impl Default for $type {
@@ -26,7 +88,7 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
             }
 
             pub const fn len(&self) -> usize {
-                0
+                1
             }
         }
 
@@ -52,10 +114,6 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
             /// Returns the serialized version of the class as bytes.
             pub fn build(&self) -> &[u8] {
                 &self.data[..]
-            }
-
-            pub fn get_data(self) -> [u8; $len] {
-                self.data
             }
 
             pub const fn cid(&self) -> u8 {
@@ -92,58 +150,20 @@ macro_rules! impl_mac_cmd_payload {
     };
 }
 
-macro_rules! mac_cmds_creator_enum {
-    (
-        $outer_vis:vis enum $outer_type:ident$(<$outer_lifetime:lifetime>),* {
-        $(
-            $name:ident
-        )*
-    }
-    ) => {
-        #[allow(dead_code)]
-        #[derive(Debug)]
-        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-        $outer_vis enum $outer_type$(<$outer_lifetime>)* {
-            $(
-                $name(concat_idents!($name,Creator)),
-            )*
-        }
-        impl$(<$outer_lifetime>)* $outer_type$(<$outer_lifetime>)* {
-            pub fn len(&self) -> usize {
-                match self {
-                    $(
-                        Self::$name(creator) => creator.len(),
-                    )*
-                }
-            }
-            pub fn bytes(&self) -> &[u8] {
-                match *self {
-                    $(
-                        Self::$name(ref v) => v.build(),
-                    )*
-                }
-            }
-        }
-        impl SerializableMacCommand for $outer_type$(<$outer_lifetime>)* {
-            fn payload_bytes(&self) -> &[u8] {
-                &self.bytes()[1..]
-            }
-
-            fn cid(&self) -> u8 {
-                match self {
-                    $(
-                        Self::$name(creator) => creator.cid(),
-                    )*
-                }
-            }
-
-            fn payload_len(&self) -> usize {
-                self.len()-1
-            }
-        }
+mac_cmds_creator_enum! {
+    pub enum UplinkMacCommandCreator {
+        LinkCheckReq
+        LinkADRAns
+        DutyCycleAns
+        RXParamSetupAns
+        DevStatusAns
+        NewChannelAns
+        RXTimingSetupAns
+        TXParamSetupAns
+        DlChannelAns
+        DeviceTimeReq
     }
 }
-pub(crate) use mac_cmds_creator_enum;
 
 /// LinkCheckReqCreator serves for creating LinkCheckReq MacCommand.
 ///
@@ -153,7 +173,6 @@ pub(crate) use mac_cmds_creator_enum;
 /// let mut creator = lorawan::encoding::maccommandcreator::LinkCheckReqCreator::new();
 /// let res = creator.build();
 /// ```
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkCheckReqCreator {}
@@ -168,7 +187,6 @@ impl_mac_cmd_creator_boilerplate!(LinkCheckReqCreator, 0x02);
 /// let mut creator = lorawan::encoding::maccommandcreator::LinkCheckAnsCreator::new();
 /// let res = creator.set_margin(253).set_gateway_count(254).build();
 /// ```
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkCheckAnsCreator {
@@ -218,7 +236,6 @@ impl LinkCheckAnsCreator {
 ///     .set_redundancy(0x37)
 ///     .build();
 /// ```
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkADRReqCreator {
@@ -235,7 +252,7 @@ impl LinkADRReqCreator {
     /// * data_rate - data rate index of the ADR request. The value must be between 0 and 15.
     pub fn set_data_rate(&mut self, data_rate: u8) -> Result<&mut Self, Error> {
         if data_rate > 0x0f {
-            return Err(Error::DataRateOutOfRange);
+            return Err(Error::OutOfRange);
         }
         self.data[1] &= 0x0f;
         self.data[1] |= data_rate << 4;
@@ -250,7 +267,7 @@ impl LinkADRReqCreator {
     /// * tx_power - TX power index. The value must be between 0 and 15.
     pub fn set_tx_power(&mut self, tx_power: u8) -> Result<&mut Self, Error> {
         if tx_power > 0x0f {
-            return Err(Error::TxPowerOutOfRange);
+            return Err(Error::OutOfRange);
         }
         self.data[1] &= 0xf0;
         self.data[1] |= tx_power & 0x0f;
@@ -264,7 +281,7 @@ impl LinkADRReqCreator {
     ///
     /// * channel_mask - instance of maccommands::ChannelMask or anything that can be converted
     /// into it.
-    pub fn set_channel_mask<T: Into<ChannelMask>>(&mut self, channel_mask: T) -> &mut Self {
+    pub fn set_channel_mask<T: Into<ChannelMask<2>>>(&mut self, channel_mask: T) -> &mut Self {
         let converted = channel_mask.into();
         self.data[2] = converted.as_ref()[0];
         self.data[3] = converted.as_ref()[1];
@@ -298,7 +315,6 @@ impl LinkADRReqCreator {
 ///     .set_tx_power_ack(true)
 ///     .build();
 /// ```
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct LinkADRAnsCreator {
@@ -353,7 +369,6 @@ impl LinkADRAnsCreator {
 /// let mut creator = lorawan::encoding::maccommandcreator::DutyCycleReqCreator::new();
 /// let res = creator.set_max_duty_cycle(0x0f).unwrap().build();
 /// ```
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DutyCycleReqCreator {
@@ -369,7 +384,7 @@ impl DutyCycleReqCreator {
     ///
     /// * max_duty_cycle - the value used to determine the aggregated duty cycle using the formula
     /// `1 / (2 ** max_duty_cycle)`.
-    pub fn set_max_duty_cycle(&mut self, max_duty_cycle: u8) -> Result<&mut Self, Infallible> {
+    pub fn set_max_duty_cycle(&mut self, max_duty_cycle: u8) -> Result<&mut Self, Error> {
         self.data[1] = max_duty_cycle;
 
         Ok(self)
@@ -384,7 +399,6 @@ impl DutyCycleReqCreator {
 /// let creator = lorawan::encoding::maccommandcreator::DutyCycleAnsCreator::new();
 /// let res = creator.build();
 /// ```
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DutyCycleAnsCreator {}
@@ -399,7 +413,7 @@ impl_mac_cmd_creator_boilerplate!(DutyCycleAnsCreator, 0x04);
 /// let mut creator = lorawan::encoding::maccommandcreator::RXParamSetupReqCreator::new();
 /// let res = creator
 ///     .set_dl_settings(0xcd)
-///     .set_frequency([0x12, 0x34, 0x56])
+///     .set_frequency(&[0x12, 0x34, 0x56])
 ///     .build();
 /// ```
 #[derive(Debug, PartialEq, Eq)]
@@ -547,7 +561,7 @@ impl DevStatusAnsCreator {
     /// * margin - the value to be used as margin.
     pub fn set_margin(&mut self, margin: i8) -> Result<&mut Self, Error> {
         if !(-32..=31).contains(&margin) {
-            return Err(Error::MarginOutOfRange);
+            return Err(Error::OutOfRange);
         }
         self.data[2] = ((margin << 2) as u8) >> 2;
 
@@ -560,11 +574,10 @@ impl DevStatusAnsCreator {
 /// # Examples
 ///
 /// ```
-/// use lorawan::frequency;
 /// let mut creator = lorawan::encoding::maccommandcreator::NewChannelReqCreator::new();
 /// let res = creator
 ///     .set_channel_index(0x0f)
-///     .set_frequency([0x12, 0x34, 0x56])
+///     .set_frequency(&[0x12, 0x34, 0x56])
 ///     .set_data_rate_range(0x53)
 ///     .build();
 /// ```
@@ -683,7 +696,7 @@ impl RXTimingSetupReqCreator {
     /// * delay - the value to be used as delay.
     pub fn set_delay(&mut self, delay: u8) -> Result<&mut Self, Error> {
         if delay > 0x0f {
-            return Err(Error::DelayOutOfRange);
+            return Err(Error::OutOfRange);
         }
         self.data[1] &= 0xf0;
         self.data[1] |= delay;
@@ -703,14 +716,36 @@ impl RXTimingSetupReqCreator {
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct RXTimingSetupAnsCreator {}
+
 impl_mac_cmd_creator_boilerplate!(RXTimingSetupAnsCreator, 0x08);
 
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TXParamSetupReqCreator {
-    data: [u8; 1],
+    data: [u8; 2],
 }
-impl_mac_cmd_creator_boilerplate!(TXParamSetupReqCreator, 0x09, 1);
+impl_mac_cmd_creator_boilerplate!(TXParamSetupReqCreator, 0x09, 2);
+impl TXParamSetupReqCreator {
+    pub fn set_downlink_dwell_time(&mut self) -> &mut Self {
+        self.data[1] &= 0xfe;
+        self.data[1] |= (1 << 5) as u8;
+        self
+    }
+    pub fn set_uplink_dwell_time(&mut self) -> &mut Self {
+        self.data[1] &= 0xfe;
+        self.data[1] |= (1 << 4) as u8;
+        self
+    }
+    pub fn set_max_eirp(&mut self, max_eirp: u8) -> Result<&mut Self, Error> {
+        if max_eirp > 0x0F {
+            return Err(Error::OutOfRange);
+        }
+        self.data[1] &= 0xf0;
+        self.data[1] |= max_eirp;
+
+        Ok(self)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -720,9 +755,21 @@ impl_mac_cmd_creator_boilerplate!(TXParamSetupAnsCreator, 0x09);
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DlChannelReqCreator {
-    data: [u8; 4],
+    data: [u8; 5],
 }
-impl_mac_cmd_creator_boilerplate!(DlChannelReqCreator, 0x0A, 4);
+impl_mac_cmd_creator_boilerplate!(DlChannelReqCreator, 0x0A, 5);
+impl DlChannelReqCreator {
+    pub fn set_channel_index(&mut self, index: u8) -> &mut Self {
+        self.data[1] = index;
+        self
+    }
+    pub fn set_frequency<T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
+        let converted = frequency.into();
+        self.data[2..5].copy_from_slice(converted.as_ref());
+
+        self
+    }
+}
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DlChannelAnsCreator {
@@ -761,9 +808,22 @@ impl_mac_cmd_creator_boilerplate!(DeviceTimeReqCreator, 0x0D);
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceTimeAnsCreator {
-    data: [u8; 5],
+    data: [u8; 6],
 }
-impl_mac_cmd_creator_boilerplate!(DeviceTimeAnsCreator, 0x0D, 5);
+impl_mac_cmd_creator_boilerplate!(DeviceTimeAnsCreator, 0x0D, 6);
+impl DeviceTimeAnsCreator {
+    pub fn set_seconds(&mut self, seconds: u32) -> &mut Self {
+        self.data[1..5].copy_from_slice(&seconds.to_le_bytes());
+        self
+    }
+    pub fn set_nano_seconds(&mut self, nano_seconds: u32) -> Result<&mut Self, Error> {
+        if nano_seconds > 1000000000 {
+            return Err(Error::OutOfRange);
+        }
+        self.data[5] = (nano_seconds / 3906250) as u8;
+        Ok(self)
+    }
+}
 
 pub fn build_mac_commands<T: AsMut<[u8]>>(
     cmds: &[&dyn SerializableMacCommand],

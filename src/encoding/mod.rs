@@ -1,27 +1,36 @@
-use crate::device::Device;
+// Copyright (c) 2017,2018,2020 Ivaylo Petrov
+//
+// Licensed under the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+//
+// author: Ivaylo Petrov <ivajloip@gmail.com>
 
-pub mod default_crypto;
+//! This module implements LoRaWAN packet handling and parsing.
+#![allow(clippy::upper_case_acronyms)]
+
+use crate::device::Device;
+pub mod creator;
 pub mod keys;
 pub mod maccommandcreator;
 pub mod maccommands;
 pub mod parser;
-pub mod securityhelpers;
 
-#[derive(Debug)]
+pub mod default_crypto;
+
+mod securityhelpers;
+
+#[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error {
-    DataRateOutOfRange,
-    TxPowerOutOfRange,
-    MarginOutOfRange,
-    DelayOutOfRange,
+    OutOfRange,
     BufferTooSmall,
     IncorrectSizeForMacCommand,
     InvalidDataRange,
-    InvalidDataForJoinRequest,
-    InvalidDataForEncryptedJoinAcceptPayload,
-    InvalidDataForEncryptedDataPayload,
     InvalidKey,
     InvalidData,
+    InvalidMic,
+    InvalidChannelIndex,
     UnsupportedMessageType,
     PhyDataEmpty,
     InsufficeientNumberOfBytes,
@@ -29,6 +38,7 @@ pub enum Error {
     MacCommandTooBigForFOpts,
     DataAndMacCommandsInPayloadNotAllowed,
     FRMPayloadWithFportZero,
+    CfListTooLong,
 }
 impl<D> From<Error> for super::Error<D>
 where

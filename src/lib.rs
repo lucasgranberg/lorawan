@@ -8,7 +8,6 @@ use core::fmt::Debug;
 mod fmt;
 
 use device::Device;
-use encoding::maccommands::{ChannelMask, Frequency};
 use mac::mac_1_0_4::region;
 
 pub mod device;
@@ -74,12 +73,7 @@ impl TryFrom<u8> for DR {
         }
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum CfList {
-    DynamicChannel([Frequency; 5]),
-    FixedChannel([ChannelMask; 4]),
-}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MType {
     JoinRequest,

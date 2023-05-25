@@ -2,10 +2,11 @@ use core::marker::PhantomData;
 
 use heapless::Vec;
 
-use crate::{
-    encoding::maccommands::{ChannelMask, DlChannelReqPayload, Frequency, NewChannelReqPayload},
-    CfList, Frame, DR,
+use crate::encoding::maccommands::{
+    ChannelMask, DlChannelReqPayload, Frequency, NewChannelReqPayload,
 };
+use crate::encoding::parser::CfList;
+use crate::{Frame, DR};
 
 use super::{Error, Region};
 
@@ -29,7 +30,7 @@ where
     fn handle_channel_mask(
         &mut self,
         new_mask: &mut [bool; 80],
-        channel_mask: ChannelMask,
+        channel_mask: ChannelMask<2>,
         channel_mask_ctrl: u8,
     ) -> Result<(), Error>;
     fn get_channel_mask(&self) -> [bool; 80];
@@ -88,7 +89,7 @@ where
     fn handle_channel_mask(
         &mut self,
         new_mask: &mut [bool; 80],
-        channel_mask: ChannelMask,
+        channel_mask: ChannelMask<2>,
         channel_mask_ctrl: u8,
     ) -> Result<(), Error> {
         match channel_mask_ctrl {

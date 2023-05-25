@@ -5,10 +5,11 @@
 // copied, modified, or distributed except according to those terms.
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
-use generic_array::{typenum::U16, GenericArray};
+use super::securityhelpers::generic_array::{typenum::U16, GenericArray};
 
 /// AES128 represents 128 bit AES key.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub struct AES128(pub [u8; 16]);
 

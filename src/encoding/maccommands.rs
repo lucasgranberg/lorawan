@@ -1,6 +1,19 @@
+// Copyright (c) 2018,2020 Ivaylo Petrov
+//
+// Licensed under the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+//
+// author: Ivaylo Petrov <ivajloip@gmail.com>
+
 use super::Error;
 use core::convert::Infallible;
-use core::marker::PhantomData;
+pub trait SerializableMacCommand {
+    fn payload_bytes(&self) -> &[u8];
+    fn cid(&self) -> u8;
+    fn payload_len(&self) -> usize;
+}
+
 /// Calculates the len in bytes of a sequence of mac commands, including th CIDs.
 pub fn mac_commands_len(cmds: &[&dyn SerializableMacCommand]) -> usize {
     cmds.iter().map(|mc| mc.payload_len() + 1).sum()
@@ -31,6 +44,7 @@ macro_rules! mac_cmd_zero_len {
                     $uplink
                 }
 
+                /// length of payload without cid
                 pub const fn len() -> usize {
                     0
                 }
@@ -57,7 +71,7 @@ macro_rules! mac_cmds {
             impl<'a> $type<'a> {
                 /// Creates a new instance of the mac command if there is enought data.
                 pub fn new(data: &'a [u8]) -> Result<$type<'a>, Error> {
-                    if data.len() < $size {
+                    if data.len() != $size {
                         Err(Error::IncorrectSizeForMacCommand)
                     } else {
                         Ok($type(&data))
@@ -74,7 +88,7 @@ macro_rules! mac_cmds {
                     $uplink
                 }
 
-                /// length of the payload of the mac command.
+                /// length of payload without cid
                 pub const fn len() -> usize {
                     $size
                 }
@@ -97,6 +111,7 @@ macro_rules! mac_cmds_enum {
     ) => {
         #[derive(Debug, PartialEq)]
         #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+        #[allow(clippy::len_without_is_empty)]
         $outer_vis enum $outer_type$(<$outer_lifetime>)* {
             $(
                 $name($type$(<$lifetime>)*),
@@ -128,7 +143,7 @@ macro_rules! mac_cmds_enum {
 
         impl$(<$outer_lifetime>)* SerializableMacCommand for $outer_type$(<$outer_lifetime>)* {
             fn payload_bytes(&self) -> &[u8] {
-                &self.bytes()[1..]
+                &self.bytes()
             }
 
             fn cid(&self) -> u8 {
@@ -140,7 +155,7 @@ macro_rules! mac_cmds_enum {
             }
 
             fn payload_len(&self) -> usize {
-                self.len()-1
+                self.len()
             }
         }
 
@@ -163,10 +178,10 @@ macro_rules! mac_cmds_enum {
                 }
             }
         }
-        impl<'a> From<&'a crate::encoding::parser::FHDR<'a>>
+        impl<'a> From<&'a super::parser::FHDR<'a>>
             for MacCommandIterator<$($outer_lifetime)*, $outer_type$(<$outer_lifetime>)*>
         {
-            fn from(fhdr: &'a crate::encoding::parser::FHDR) -> Self {
+            fn from(fhdr: &'a super::parser::FHDR) -> Self {
                 Self {
                     data: &fhdr.0[7_usize..(7 + fhdr.fopts_len()) as usize],
                     index: 0,
@@ -175,10 +190,10 @@ macro_rules! mac_cmds_enum {
             }
         }
 
-        impl<'a> From<&'a crate::encoding::parser::FRMMacCommands<'a>>
+        impl<'a> From<&'a super::parser::FRMMacCommands<'a>>
             for MacCommandIterator<$($outer_lifetime)*, $outer_type$(<$outer_lifetime>)*>
         {
-            fn from(frmm: &'a crate::encoding::parser::FRMMacCommands) -> Self {
+            fn from(frmm: &'a super::parser::FRMMacCommands) -> Self {
                 Self {
                     data: frmm.1,
                     index: 0,
@@ -188,7 +203,36 @@ macro_rules! mac_cmds_enum {
         }
     }
 }
-pub(crate) use mac_cmds_enum;
+use core::marker::PhantomData;
+mac_cmds_enum! {
+    pub enum DownlinkMacCommand<'a> {
+        LinkCheckAns(LinkCheckAnsPayload<'a>)
+        LinkADRReq(LinkADRReqPayload<'a>)
+        DutyCycleReq(DutyCycleReqPayload<'a>)
+        RXParamSetupReq(RXParamSetupReqPayload<'a>)
+        DevStatusReq(DevStatusReqPayload)
+        NewChannelReq(NewChannelReqPayload<'a>)
+        RXTimingSetupReq(RXTimingSetupReqPayload<'a>)
+        TXParamSetupReq(TXParamSetupReqPayload<'a>)
+        DlChannelReq(DlChannelReqPayload<'a>)
+        DeviceTimeAns(DeviceTimeAnsPayload<'a>)
+    }
+}
+
+mac_cmds_enum! {
+    pub enum UplinkMacCommand<'a> {
+        LinkCheckReq(LinkCheckReqPayload)
+        LinkADRAns(LinkADRAnsPayload<'a>)
+        DutyCycleAns(DutyCycleAnsPayload)
+        RXParamSetupAns(RXParamSetupAnsPayload<'a>)
+        DevStatusAns(DevStatusAnsPayload<'a>)
+        NewChannelAns(NewChannelAnsPayload<'a>)
+        RXTimingSetupAns(RXTimingSetupAnsPayload)
+        TXParamSetupAns(TXParamSetupAnsPayload)
+        DlChannelAns(DlChannelAnsPayload<'a>)
+        DeviceTimeReq(DeviceTimeReqPayload)
+    }
+}
 
 mac_cmd_zero_len! {
     /// LinkCheckReqPayload represents the LinkCheckReq LoRaWAN MACCommand.
@@ -220,6 +264,7 @@ mac_cmd_zero_len! {
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug, PartialEq, Eq)]
     struct DeviceTimeReqPayload[cmd=DeviceTimeReq, cid=0x0D, uplink=true]
+
 }
 
 mac_cmds! {
@@ -291,7 +336,7 @@ mac_cmds! {
     /// DeviceTimeAnsPayload represents the DeviceTimeAns LoRaWAN MACCommand.
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug, PartialEq, Eq)]
-    struct DeviceTimeAnsPayload[cmd=DeviceTimeAns, cid=0x0D, uplink=false, size=8]
+    struct DeviceTimeAnsPayload[cmd=DeviceTimeAns, cid=0x0D, uplink=false, size=5]
 }
 
 macro_rules! create_ack_fn {
@@ -318,12 +363,73 @@ macro_rules! create_value_reader_fn {
     )
 }
 
+/// Parses bytes to uplink mac commands if possible.
+///
+/// Could return error if some values are out of range or the payload does not end at mac command
+/// boundry.
+/// # Argument
+///
+/// * bytes - the data from which the MAC commands are to be built.
+///
+/// # Examples
+///
+/// ```
+/// let mut data = vec![0x02, 0x03, 0x00];
+/// let mac_cmds: Vec<lorawan::encoding::maccommands::UplinkMacCommand> =
+///     lorawan::encoding::maccommands::parse_uplink_mac_commands(&data).collect();
+/// ```
+pub fn parse_uplink_mac_commands(data: &[u8]) -> MacCommandIterator<UplinkMacCommand> {
+    MacCommandIterator::new(data)
+}
+/// Parses bytes to downlink mac commands if possible.
+///
+/// Could return error if some values are out of range or the payload does not end at mac command
+/// boundry.
+/// # Argument
+///
+/// * bytes - the data from which the MAC commands are to be built.
+///
+/// # Examples
+///
+/// ```
+/// let mut data = vec![0x02, 0x03, 0x00];
+/// let mac_cmds: Vec<lorawan::encoding::maccommands::DownlinkMacCommand> =
+///     lorawan::encoding::maccommands::parse_downlink_mac_commands(&data).collect();
+/// ```
+pub fn parse_downlink_mac_commands(data: &[u8]) -> MacCommandIterator<DownlinkMacCommand> {
+    MacCommandIterator::new(data)
+}
+
 /// Implementation of iterator for mac commands.
 pub struct MacCommandIterator<'a, T> {
     pub(crate) data: &'a [u8],
     pub(crate) index: usize,
     pub(crate) item: PhantomData<T>,
 }
+
+impl<'a, T> MacCommandIterator<'a, T> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Self {
+            data,
+            index: 0,
+            item: Default::default(),
+        }
+    }
+}
+
+// impl<'a> Iterator for MacCommandIterator<'a> {
+//     type Item = MacCommand<'a>;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.index < self.data.len() {
+//             if let Ok((l, v)) = parse_one_mac_cmd(&self.data[self.index..], self.uplink) {
+//                 self.index += 1 + l;
+//                 return Some(v);
+//             }
+//         }
+//         None
+//     }
+// }
 
 impl<'a> LinkCheckAnsPayload<'a> {
     create_value_reader_fn!(
@@ -357,8 +463,8 @@ impl<'a> LinkADRReqPayload<'a> {
     }
 
     /// Usable channels for next transmissions.
-    pub fn channel_mask(&self) -> ChannelMask {
-        ChannelMask::new_from_raw(&self.0[1..3])
+    pub fn channel_mask(&self) -> ChannelMask<2> {
+        ChannelMask::<2>::new_from_raw(&self.0[1..3])
     }
 
     /// Provides information how channel mask is to be interpreted and how many times each message
@@ -368,17 +474,93 @@ impl<'a> LinkADRReqPayload<'a> {
     }
 }
 
+/// ChannelMask represents the ChannelMask from LoRaWAN.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ChannelMask([u8; 2]);
+pub struct ChannelMask<const N: usize>([u8; N]);
 
-impl ChannelMask {
+impl<const N: usize> Default for ChannelMask<N> {
+    fn default() -> Self {
+        ChannelMask([0xFF; N])
+    }
+}
+#[cfg(feature = "defmt")]
+impl<const N: usize> defmt::Format for ChannelMask<N> {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "ChannelMask({})", self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<const N: usize> serde::Serialize for ChannelMask<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for e in &self.0 {
+            seq.serialize_element(e)?;
+        }
+        seq.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+struct ChannelMaskDeserializer<const N: usize>;
+
+#[cfg(feature = "serde")]
+impl<'de, const N: usize> serde::de::Visitor<'de> for ChannelMaskDeserializer<N> {
+    type Value = ChannelMask<N>;
+
+    fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
+        formatter.write_str("ChannelMask byte.")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut arr = [0; N];
+        let mut index = 0;
+        while let Some(el) = seq.next_element()? {
+            if index >= N {
+                return Err(serde::de::Error::custom(
+                    "ChannelMask has too many elements",
+                ));
+            } else {
+                arr[index] = el;
+                index += 1;
+            }
+        }
+        Ok(ChannelMask(arr))
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const N: usize> serde::Deserialize<'de> for ChannelMask<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(ChannelMaskDeserializer {})
+    }
+}
+
+impl<const N: usize> ChannelMask<N> {
     /// Constructs a new ChannelMask from the provided data.
     pub fn new(data: &[u8]) -> Result<Self, Error> {
-        if data.len() < 2 {
-            return Err(Error::InvalidData);
+        if data.len() < N {
+            return Err(Error::BufferTooSmall);
         }
         Ok(Self::new_from_raw(data))
+    }
+
+    pub fn set_bank(&mut self, index: usize, value: u8) {
+        self.0[index] = value;
+    }
+
+    pub fn get_index(&self, index: usize) -> u8 {
+        self.0[index]
     }
 
     /// Constructs a new ChannelMask from the provided data, without verifying if they are
@@ -386,7 +568,8 @@ impl ChannelMask {
     ///
     /// Improper use of this method could lead to panic during runtime!
     pub fn new_from_raw(data: &[u8]) -> Self {
-        let payload = [data[0], data[1]];
+        let mut payload = [0; N];
+        payload[..N].copy_from_slice(&data[..N]);
         ChannelMask(payload)
     }
 
@@ -396,15 +579,16 @@ impl ChannelMask {
 
     /// Verifies if a given channel is enabled.
     pub fn is_enabled(&self, index: usize) -> Result<bool, Error> {
-        if index > 15 {
-            return Err(Error::InvalidData);
+        let index_limit = N * 8 - 1;
+        if index > index_limit {
+            return Err(Error::InvalidChannelIndex);
         }
         Ok(self.channel_enabled(index))
     }
 
     /// Provides information for each of the 16 channels if they are enabled.
-    pub fn statuses(&self) -> [bool; 16] {
-        let mut res = [false; 16];
+    pub fn statuses<const M: usize>(&self) -> [bool; M] {
+        let mut res = [false; M];
         for (i, c) in res.iter_mut().enumerate() {
             *c = self.channel_enabled(i);
         }
@@ -412,13 +596,13 @@ impl ChannelMask {
     }
 }
 
-impl From<[u8; 2]> for ChannelMask {
-    fn from(v: [u8; 2]) -> Self {
+impl<const N: usize> From<[u8; N]> for ChannelMask<N> {
+    fn from(v: [u8; N]) -> Self {
         ChannelMask(v)
     }
 }
 
-impl AsRef<[u8]> for ChannelMask {
+impl<const N: usize> AsRef<[u8]> for ChannelMask<N> {
     fn as_ref(&self) -> &[u8] {
         &self.0[..]
     }
@@ -539,6 +723,45 @@ impl From<u8> for DLSettings {
     }
 }
 
+// /// Frequency represents a channel's central frequency.
+// #[derive(Debug, PartialEq, Eq)]
+// pub struct Frequency<'a>(&'a [u8]);
+
+// impl<'a> Frequency<'a> {
+//     /// Constructs a new Frequency from the provided bytes, without verifying if they are
+//     /// admissible.
+//     ///
+//     /// Improper use of this method could lead to panic during runtime!
+//     pub fn new_from_raw(bytes: &'a [u8]) -> Self {
+//         Frequency(bytes)
+//     }
+
+//     /// Constructs a new Frequency from the provided bytes.
+//     pub fn new(bytes: &'a [u8]) -> Option<Self> {
+//         if bytes.len() != 3 {
+//             return None;
+//         }
+
+//         Some(Frequency(bytes))
+//     }
+
+//     /// Provides the decimal value in Hz of the frequency.
+//     pub fn value(&self) -> u32 {
+//         ((u32::from(self.0[2]) << 16) + (u32::from(self.0[1]) << 8) + u32::from(self.0[0])) * 100
+//     }
+// }
+
+// impl<'a> From<&'a [u8; 3]> for Frequency<'a> {
+//     fn from(v: &'a [u8; 3]) -> Self {
+//         Frequency(&v[..])
+//     }
+// }
+
+// impl<'a> AsRef<[u8]> for Frequency<'a> {
+//     fn as_ref(&self) -> &[u8] {
+//         self.0
+//     }
+// }
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Frequency([u8; 3]);
 
@@ -580,9 +803,9 @@ impl Frequency {
     }
 }
 
-impl From<[u8; 3]> for Frequency {
-    fn from(v: [u8; 3]) -> Self {
-        Self(v)
+impl From<&[u8; 3]> for Frequency {
+    fn from(v: &[u8; 3]) -> Self {
+        Self::new_from_raw(v)
     }
 }
 
@@ -700,7 +923,24 @@ impl From<u8> for DataRateRange {
     }
 }
 
-impl<'a> NewChannelAnsPayload<'a> {}
+impl<'a> NewChannelAnsPayload<'a> {
+    create_ack_fn!(
+        /// Whether the channel frequency change was applied successsfully.
+        channel_freq_ack,
+        0
+    );
+
+    create_ack_fn!(
+        /// Whether the data rate range change was applied successsfully.
+        data_rate_range_ack,
+        1
+    );
+
+    /// Whether the device has accepted the new channel.
+    pub fn ack(&self) -> bool {
+        self.0[0] == 0x03
+    }
+}
 
 impl<'a> RXTimingSetupReqPayload<'a> {
     /// Delay before the first RX window.
@@ -711,13 +951,13 @@ impl<'a> RXTimingSetupReqPayload<'a> {
 
 impl<'a> TXParamSetupReqPayload<'a> {
     pub fn downlink_dwell_time(&self) -> bool {
-        self.0[0] & (1 << 4) != 0
+        self.0[0] & (1 << 5) != 0
     }
     pub fn uplink_dwell_time(&self) -> bool {
         self.0[0] & (1 << 4) != 0
     }
     pub fn max_eirp(&self) -> u8 {
-        match self.0[0] & (0b111) {
+        match self.0[0] & (0b1111) {
             0 => 8,
             1 => 10,
             2 => 12,
@@ -751,17 +991,32 @@ impl DlChannelReqPayload<'_> {
         Frequency::new_from_raw(&self.0[1..4])
     }
 }
+
+impl DlChannelAnsPayload<'_> {
+    create_ack_fn!(
+        /// Channel frequency ok
+        channel_freq_ack,
+        0
+    );
+
+    create_ack_fn!(
+        /// Uplink frequency exists
+        uplink_freq_ack,
+        1
+    );
+
+    /// Whether the device has accepted the new downlink frequency.
+    pub fn ack(&self) -> bool {
+        self.0[0] & 0x03 == 0x03
+    }
+}
+
 impl DeviceTimeAnsPayload<'_> {
     pub fn seconds(&self) -> u32 {
-        u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
+        u32::from_le_bytes([self.0[3], self.0[2], self.0[1], self.0[0]])
     }
     //raw value in 1/256 seconds
     pub fn nano_seconds(&self) -> u32 {
         (self.0[4] as u32) * 3906250
     }
-}
-pub trait SerializableMacCommand {
-    fn payload_bytes(&self) -> &[u8];
-    fn cid(&self) -> u8;
-    fn payload_len(&self) -> usize;
 }

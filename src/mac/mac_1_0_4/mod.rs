@@ -3,53 +3,44 @@ use core::{
     marker::PhantomData,
 };
 
-use self::{
-    encoding::{
-        creator::{DataPayloadCreator, JoinRequestCreator},
-        maccommandcreator::*,
-        maccommands::DownlinkMacCommand,
-        parser::{DecryptedDataPayload, DecryptedJoinAcceptPayload},
-    },
-    region::{
+use self::region::{
         channel_plan::{Channel, ChannelPlan},
         Region,
-    },
 };
-use crate::device::non_volatile_store::NonVolatileStore;
 use crate::{
     device::radio::{
         types::{RfConfig, TxConfig},
         Radio,
     },
     device::{
+        non_volatile_store::NonVolatileStore,
         radio::types::{CodingRate, RxQuality},
         radio_buffer::RadioBuffer,
         rng::Rng,
         timer::Timer,
-        Device,
+        Device, DeviceSpecs,
     },
     encoding::{
+        creator::{DataPayloadCreator, JoinRequestCreator},
         default_crypto::DefaultFactory,
         keys::{CryptoFactory, AES128},
         maccommandcreator::{
             DevStatusAnsCreator, DlChannelAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator,
             NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
-            TXParamSetupAnsCreator,
+            TXParamSetupAnsCreator, UplinkMacCommandCreator,
         },
-        maccommands::{DLSettings, MacCommandIterator, SerializableMacCommand},
+        maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator, SerializableMacCommand},
         parser::{
-            parse_with_factory, AsPhyPayloadBytes, DataHeader, DevAddr, DevNonce, FCtrl,
-            FRMPayload, PhyPayload, EUI64,
+            parse_with_factory, AsPhyPayloadBytes, DataHeader, DecryptedDataPayload,
+            DecryptedJoinAcceptPayload, DevAddr, DevNonce, FCtrl, FRMPayload, PhyPayload, EUI64,
         },
     },
     Error, Frame, Window, DR,
 };
 use futures::{future::select, future::Either, pin_mut};
-use generic_array::{typenum::U256, GenericArray};
 use heapless::Vec;
 
 use super::RxWindows;
-pub mod encoding;
 pub mod region;
 pub struct Session {
     newskey: AES128,
@@ -721,14 +712,13 @@ where
         }
     }
 
-    fn prepare_buffer<CRYPTO: CryptoFactory, D>(
+    fn prepare_buffer<D>(
         &mut self,
         data: &[u8],
         fport: u8,
         confirmed: bool,
         radio_buffer: &mut RadioBuffer<256>,
         device: &D,
-        factory: CRYPTO,
     ) -> Result<u32, Error<D>>
     where
         D: MacDevice<R, S>,
@@ -740,8 +730,7 @@ where
                 return Err(Error::Mac(crate::mac::Error::SessionExpired));
             }
             let fcnt = session.fcnt_up();
-            let mut phy: DataPayloadCreator<GenericArray<u8, U256>, CRYPTO> =
-                DataPayloadCreator::new(GenericArray::default(), factory);
+            let mut phy = DataPayloadCreator::new();
 
             let mut fctrl = FCtrl(0x0, true);
             if device.adaptive_data_rate_enabled() {
@@ -902,7 +891,7 @@ where
         } else {
             return Err(Error::Mac(crate::mac::Error::NetworkNotJoined));
         }
-        self.prepare_buffer(data, fport, confirmed, radio_buffer, device, DefaultFactory)?;
+        self.prepare_buffer(data, fport, confirmed, radio_buffer, device)?;
         let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
         self.ack_next = false;
         // Some commands have different ack meechanism
@@ -942,7 +931,7 @@ where
                                 )
                                 .unwrap();
 
-                                trace!("fhdr {:?}", decrypted.fhdr().0);
+                                trace!("fhdr {:?}", decrypted.fhdr());
                                 self.handle_downlink_macs(
                                     device,
                                     rx_quality,
