@@ -1,5 +1,5 @@
 pub mod types;
-use core::{fmt::Debug, future::Future};
+use core::fmt::Debug;
 use types::*;
 
 /// An asynchronous timer that allows the state machine to await

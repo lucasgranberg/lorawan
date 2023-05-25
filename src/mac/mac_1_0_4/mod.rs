@@ -112,11 +112,11 @@ pub struct Credentials {
     dev_nonce: u16,
 }
 impl Credentials {
-    pub fn new(app_eui: [u8; 8], dev_eui: [u8; 8], app_key: AES128) -> Self {
+    pub fn new(app_eui: [u8; 8], dev_eui: [u8; 8], app_key: [u8; 16]) -> Self {
         Self {
             app_eui,
             dev_eui,
-            app_key,
+            app_key: AES128(app_key),
             dev_nonce: 0,
         }
     }
@@ -218,7 +218,7 @@ where
         non_volatile_store: &mut Self::NonVolatileStore,
         app_eui: [u8; 8],
         dev_eui: [u8; 8],
-        app_key: AES128,
+        app_key: [u8; 16],
     ) -> Result<
         (Configuration, Credentials),
         <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error,
@@ -316,8 +316,8 @@ where
         Self {
             session: None,
             channel_plan: Default::default(),
-            region: PhantomData::default(),
-            device: PhantomData::default(),
+            region: PhantomData,
+            device: PhantomData,
             uplink_cmds: Vec::new(),
             ack_next: false,
             configuration,
@@ -828,9 +828,8 @@ where
                     if decrypt.validate_mic(&self.credentials.app_key) {
                         let session = Session::derive_new(
                             &decrypt,
-                            DevNonce::<[u8; 2]>::new_from_raw(
-                                self.credentials.dev_nonce.to_le_bytes(),
-                            ),
+                            DevNonce::<[u8; 2]>::new(self.credentials.dev_nonce.to_le_bytes())
+                                .unwrap(),
                             &self.credentials,
                         );
                         trace!("msg {=[u8]:02X}", decrypt.as_bytes());
