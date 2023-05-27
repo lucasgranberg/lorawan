@@ -6,7 +6,7 @@ use crate::encoding::maccommands::{
     ChannelMask, DlChannelReqPayload, Frequency, NewChannelReqPayload,
 };
 use crate::encoding::parser::CfList;
-use crate::{Frame, DR};
+use crate::mac::types::*;
 
 use super::{Error, Region};
 

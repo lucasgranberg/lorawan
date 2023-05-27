@@ -1,9 +1,7 @@
+use crate::device::radio::types::{CodingRate, Datarate};
 use crate::device::Device;
-use crate::{
-    device::radio::types::{CodingRate, Datarate},
-    DR,
-};
 
+use super::types::DR;
 pub mod channel_plan;
 
 #[derive(Debug)]
@@ -17,7 +15,7 @@ pub enum Error {
     NoValidChannelFound,
     InvalidCfListType,
 }
-impl<D> From<Error> for super::Error<D>
+impl<D> From<Error> for crate::Error<D>
 where
     D: Device,
 {

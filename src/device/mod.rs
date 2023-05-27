@@ -8,7 +8,7 @@ use radio::Radio;
 use rng::Rng;
 use timer::Timer;
 
-use crate::DR;
+use crate::mac::types::DR;
 
 use self::non_volatile_store::NonVolatileStore;
 

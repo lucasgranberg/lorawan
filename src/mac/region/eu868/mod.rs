@@ -1,8 +1,6 @@
 use super::Error;
-use crate::{
-    device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor},
-    DR,
-};
+use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
+use crate::mac::types::DR;
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 
