@@ -11,13 +11,13 @@ use super::{Channel, ChannelPlan};
 
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicChannel {
-    pub(crate) frequency: Frequency,
-    pub(crate) dl_frequency: Option<Frequency>,
+    pub(crate) frequency: u32,
+    pub(crate) dl_frequency: Option<u32>,
     pub(crate) max_data_rate: u8,
     pub(crate) min_data_rate: u8,
 }
 impl Channel for DynamicChannel {
-    fn get_frequency(&self) -> Frequency {
+    fn get_frequency(&self) -> u32 {
         self.frequency
     }
 }
@@ -38,7 +38,7 @@ where
         let mut channels = [None; N];
         for (index, frequency) in R::mandatory_frequencies().iter().enumerate() {
             channels[index] = Some(DynamicChannel {
-                frequency: Frequency::new_from_value(frequency),
+                frequency: frequency.clone(),
                 dl_frequency: None,
                 max_data_rate: R::max_data_rate_join_req() as u8,
                 min_data_rate: R::min_data_rate_join_req() as u8,
@@ -127,7 +127,7 @@ where
     fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), Error> {
         if (payload.channel_index() as usize) < self.channels.len() {
             self.channels[payload.channel_index() as usize] = Some(DynamicChannel {
-                frequency: payload.frequency(),
+                frequency: payload.frequency().value(),
                 max_data_rate: payload.data_rate_range().max_data_rate(),
                 min_data_rate: payload.data_rate_range().min_data_range(),
                 dl_frequency: None,
@@ -142,7 +142,7 @@ where
         let index = payload.channel_index() as usize;
         if (index) < N {
             if let Some(mut channel) = self.channels[index] {
-                channel.dl_frequency = Some(payload.frequency());
+                channel.dl_frequency = Some(payload.frequency().value());
                 return Ok(());
             }
         }
@@ -169,7 +169,7 @@ where
         if let CfList::DynamicChannel(cf_list) = cf_list {
             for (index, frequency) in cf_list.iter().enumerate() {
                 self.channels[R::default_channels() as usize + index] = Some(DynamicChannel {
-                    frequency: *frequency,
+                    frequency: frequency.value(),
                     dl_frequency: None,
                     max_data_rate: R::max_data_rate() as u8,
                     min_data_rate: R::min_data_rate() as u8,
@@ -183,7 +183,7 @@ where
 
     fn validate_frequency(&self, frequency: u32) -> Result<(), Error> {
         for channel in self.channels.iter().flatten() {
-            if channel.get_frequency().value() == frequency {
+            if channel.get_frequency() == frequency {
                 return Ok(());
             }
         }

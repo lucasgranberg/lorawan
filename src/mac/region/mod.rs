@@ -14,6 +14,7 @@ pub enum Error {
     DataRateNotSupported(DR),
     NoValidChannelFound,
     InvalidCfListType,
+    CommandNotImplmentedForRegion,
 }
 impl<D> From<Error> for crate::Error<D>
 where
@@ -64,3 +65,4 @@ pub trait Region {
 }
 
 pub mod eu868;
+pub mod us915;
