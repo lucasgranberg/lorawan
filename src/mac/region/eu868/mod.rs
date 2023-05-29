@@ -4,7 +4,7 @@ use crate::mac::types::DR;
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 
-pub struct Eu868 {}
+pub struct Eu868;
 impl crate::mac::Region for Eu868 {
     fn mandatory_frequencies() -> &'static [u32] {
         &JOIN_CHANNELS

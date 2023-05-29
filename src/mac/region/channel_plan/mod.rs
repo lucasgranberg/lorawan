@@ -1,14 +1,13 @@
-use crate::encoding::maccommands::{
-    ChannelMask, DlChannelReqPayload, Frequency, NewChannelReqPayload,
-};
+use crate::encoding::maccommands::{ChannelMask, DlChannelReqPayload, NewChannelReqPayload};
 use crate::encoding::parser::CfList;
 use crate::mac::types::*;
 pub mod dynamic;
+pub mod fixed;
 
 use super::{Error, Region};
 
 pub trait Channel {
-    fn get_frequency(&self) -> Frequency;
+    fn get_frequency(&self) -> u32;
 }
 pub trait ChannelPlan<R>
 where

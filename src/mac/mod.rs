@@ -304,7 +304,7 @@ where
         let tx_config = TxConfig {
             pw,
             rf: RfConfig {
-                frequency: channel.get_frequency().value(),
+                frequency: channel.get_frequency(),
                 coding_rate: CodingRate::_4_5,
                 data_rate,
             },
@@ -328,7 +328,7 @@ where
         let data_rate = R::convert_data_rate(data_rate)?;
         let rf_config = match (frame, window) {
             (Frame::Join, Window::_1) => RfConfig {
-                frequency: channel.get_frequency().value(),
+                frequency: channel.get_frequency(),
                 coding_rate: CodingRate::_4_5,
                 data_rate,
             },
@@ -338,7 +338,7 @@ where
                 data_rate,
             },
             (Frame::Data, Window::_1) => RfConfig {
-                frequency: channel.get_frequency().value(),
+                frequency: channel.get_frequency(),
                 coding_rate: CodingRate::_4_5,
                 data_rate,
             },
