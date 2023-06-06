@@ -3,6 +3,7 @@
 #![feature(type_alias_impl_trait)]
 #![feature(concat_idents)]
 #![feature(async_fn_in_trait)]
+#![allow(incomplete_features)]
 
 use core::fmt::Debug;
 mod fmt;
