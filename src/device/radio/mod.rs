@@ -24,4 +24,7 @@ pub trait Radio: Sized {
         config: RfConfig,
         rx_buf: &mut [u8],
     ) -> Result<(usize, RxQuality), Self::Error>;
+
+    /// Place the radio in sleep mode with warm or cold start specified.
+    async fn sleep(&mut self, warm_start: bool) -> Result<(), Self::Error>;
 }
