@@ -10,9 +10,10 @@ use core::{
 };
 
 use self::region::{
-    channel_plan::{Channel, ChannelPlan},
+    channel_plan::{Channel, ChannelPlan, NUM_OF_CHANNEL_BLOCKS},
     Region,
 };
+
 use crate::{
     device::radio::{
         types::{RfConfig, TxConfig},
@@ -41,7 +42,7 @@ use crate::{
         },
     },
 };
-use futures::{future::select, future::Either, pin_mut};
+use futures::pin_mut;
 use heapless::Vec;
 use types::*;
 
@@ -163,7 +164,9 @@ where
         (0u8..=5u8).contains(&rx1_dr_offset)
     }
     fn validate_data_rate(&self, dr: u8) -> bool {
-        ((self.min_data_rate() as u8)..=(self.max_data_rate() as u8)).contains(&dr)
+        DR::try_from(dr)
+            .unwrap()
+            .in_range((self.min_data_rate(), self.max_data_rate()))
     }
     fn validate_dl_settings(&mut self, dl_settings: DLSettings) -> (bool, bool) {
         let rx1_data_rate_offset_ack =
@@ -235,11 +238,7 @@ where
     }
     fn rx1_data_rate(&self, tx_dr: DR) -> DR {
         let offset = self.rx1_data_rate_offset();
-        if offset < tx_dr as u8 {
-            (tx_dr as u8 - offset).try_into().unwrap_or(tx_dr)
-        } else {
-            DR::_0
-        }
+        R::get_rx1_dr(tx_dr, offset).unwrap_or(R::default_data_rate())
     }
     fn rx2_data_rate(&self, frame: &Frame) -> DR {
         match frame {
@@ -269,10 +268,8 @@ where
     fn get_rx_windows(&self, frame: Frame) -> RxWindows {
         match frame {
             Frame::Join => RxWindows {
-                rx1_open: R::default_join_accept_delay1() - 150,
-                rx1_close: R::default_join_accept_delay2() - 200,
-                rx2_open: R::default_join_accept_delay2() - 150,
-                rx2_close: R::default_join_accept_delay2() + 3000,
+                rx1_open: R::default_join_accept_delay1() - 15, // current observed duration to prepare to receive ranges from 0 to 13 ms ???
+                rx2_open: R::default_join_accept_delay2() - 15,
             },
             Frame::Data => {
                 let rx1_delay: u16 = self
@@ -282,10 +279,8 @@ where
                     .unwrap_or(R::default_rx_delay());
                 let rx2_delay = rx1_delay + 1000;
                 RxWindows {
-                    rx1_open: rx1_delay - 150,
-                    rx1_close: rx2_delay - 200,
-                    rx2_open: rx2_delay - 150,
-                    rx2_close: rx2_delay + 3000,
+                    rx1_open: rx1_delay - 15, // current observed duration to prepare to receive ranges from 0 to 13 ms ???
+                    rx2_open: rx2_delay - 15,
                 }
             }
         }
@@ -304,7 +299,7 @@ where
         let tx_config = TxConfig {
             pw,
             rf: RfConfig {
-                frequency: channel.get_frequency(),
+                frequency: channel.get_ul_frequency(),
                 coding_rate: CodingRate::_4_5,
                 data_rate,
             },
@@ -328,7 +323,7 @@ where
         let data_rate = R::convert_data_rate(data_rate)?;
         let rf_config = match (frame, window) {
             (Frame::Join, Window::_1) => RfConfig {
-                frequency: channel.get_frequency(),
+                frequency: channel.get_dl_frequency(),
                 coding_rate: CodingRate::_4_5,
                 data_rate,
             },
@@ -338,7 +333,7 @@ where
                 data_rate,
             },
             (Frame::Data, Window::_1) => RfConfig {
-                frequency: channel.get_frequency(),
+                frequency: channel.get_dl_frequency(),
                 coding_rate: CodingRate::_4_5,
                 data_rate,
             },
@@ -464,13 +459,13 @@ where
                     Some(UplinkMacCommandCreator::DevStatusAns(ans))
                 }
                 DownlinkMacCommand::NewChannelReq(payload) => {
-                    if payload.channel_index() < R::default_channels() {
+                    if (payload.channel_index() as usize) < R::default_channels(true) {
                         None //silently ignore if default channel
                     } else {
                         let data_rate_range_ack = device
-                            .validate_data_rate(payload.data_rate_range().min_data_range())
+                            .validate_data_rate(payload.data_rate_range().min_data_rate())
                             && device.validate_data_rate(payload.data_rate_range().max_data_rate())
-                            && payload.data_rate_range().min_data_range()
+                            && payload.data_rate_range().min_data_rate()
                                 < payload.data_rate_range().max_data_rate();
 
                         let channel_frequency_ack = payload.frequency().value() == 0
@@ -547,49 +542,51 @@ where
         D: MacDevice<R, S>,
     {
         let windows = self.get_rx_windows(frame);
-        let mut window = Window::_1;
 
-        loop {
+        let open_rx1_fut = device
+            .timer()
+            .at(windows.get_open(&Window::_1) as u64)
+            .map_err(crate::device::Error::Timer)?;
+        let open_rx2_fut = device
+            .timer()
+            .at(windows.get_open(&Window::_2) as u64)
+            .map_err(crate::device::Error::Timer)?;
+        pin_mut!(open_rx2_fut);
+        open_rx1_fut.await;
+
+        {
             radio_buffer.clear();
-            let rf_config = self.create_rf_config(&frame, &window, data_rate, channel)?;
+            let rf_config = self.create_rf_config(&frame, &Window::_1, data_rate, channel)?;
             trace!("rf config {:?}", rf_config);
-            let open_fut = device
-                .timer()
-                .at(windows.get_open(&window) as u64)
-                .map_err(crate::device::Error::Timer)?;
-            let timeout_fut = device
-                .timer()
-                .at(windows.get_close(&window) as u64)
-                .map_err(crate::device::Error::Timer)?;
-            let rx_fut = device.radio().rx(rf_config, radio_buffer.as_raw_slice());
-            pin_mut!(rx_fut);
-            pin_mut!(timeout_fut);
-            open_fut.await;
+            match device
+                .radio()
+                .rx(rf_config, 1, radio_buffer.as_raw_slice())
+                .await
+            {
+                Ok(ret) => {
+                    return Ok(Some(ret));
+                }
+                // Bail on error other than timeout ???
+                Err(_e) => {}
+            }
+        }
 
-            // Wait until either RX is complete or if we've reached window close
-            match select(rx_fut, timeout_fut).await {
-                // RX is complete!
-                Either::Left((r, close_at)) => match r {
-                    Ok(ret) => {
-                        return Ok(Some(ret));
-                    }
-                    // Ignore errors or timeouts and wait until the RX2 window is ready.
-                    Err(e) => {
-                        if let Window::_1 = window {
-                            window = Window::_2;
-                            close_at.await;
-                        } else {
-                            return Err(crate::Error::Device(crate::device::Error::Radio(e)));
-                        }
-                    }
-                },
-                // Timeout! Jumpt to next window.
-                Either::Right(_) => {
-                    if let Window::_1 = window {
-                        window = Window::_2;
-                    } else {
-                        return Ok(None);
-                    }
+        open_rx2_fut.await;
+
+        {
+            radio_buffer.clear();
+            let rf_config = self.create_rf_config(&frame, &Window::_2, data_rate, channel)?;
+            trace!("rf config {:?}", rf_config);
+            match device
+                .radio()
+                .rx(rf_config, 1, radio_buffer.as_raw_slice())
+                .await
+            {
+                Ok(ret) => {
+                    return Ok(Some(ret));
+                }
+                Err(e) => {
+                    return Err(crate::Error::Device(crate::device::Error::Radio(e)));
                 }
             }
         }
@@ -657,32 +654,57 @@ where
     where
         D: MacDevice<R, S>,
     {
+        let tx_buffer = radio_buffer.clone();
+
         for _ in 0..self.configuration.number_of_transmissions {
-            let random = device.rng().next_u32().map_err(crate::device::Error::Rng)?;
-            let tx_data_rate = self.tx_data_rate();
-            let channel = self
-                .channel_plan
-                .get_random_channel(random, frame, tx_data_rate)?;
-
-            let tx_config = self.create_tx_config(device, frame, &channel)?;
-            trace!("tx config {:?}", tx_config);
-            // Transmit the join payload
-            let _ms = device
-                .radio()
-                .tx(tx_config, radio_buffer.as_ref())
-                .await
-                .map_err(crate::device::Error::Radio)?;
-            device.timer().reset();
-
-            // Receive join response within RX window
-            let rx_res = self
-                .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &channel)
-                .await?;
-            if let Some((num_read, _)) = rx_res {
-                radio_buffer.inc(num_read);
+            let mut channel_block_randoms = [0x00u32; NUM_OF_CHANNEL_BLOCKS];
+            for i in 0..NUM_OF_CHANNEL_BLOCKS {
+                channel_block_randoms[i] =
+                    device.rng().next_u32().map_err(crate::device::Error::Rng)?;
             }
-            if rx_res.is_some() {
-                return Ok(rx_res);
+            let tx_data_rate = self.tx_data_rate();
+            let channels = self.channel_plan.get_random_channels_from_blocks(
+                channel_block_randoms,
+                frame,
+                tx_data_rate,
+            )?;
+
+            for channel in channels {
+                match channel {
+                    Some(chn) => {
+                        let tx_config = self.create_tx_config(device, frame, &chn)?;
+                        trace!("tx config {:?}", tx_config);
+                        let _ms = device
+                            .radio()
+                            .tx(tx_config, tx_buffer.as_ref())
+                            .await
+                            .map_err(crate::device::Error::Radio)?;
+                        device.timer().reset();
+
+                        match self
+                            .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &chn)
+                            .await
+                        {
+                            Ok(Some((num_read, rx_quality))) => {
+                                radio_buffer.inc(num_read);
+                                return Ok(Some((num_read, rx_quality)));
+                            }
+                            Ok(None) => {}
+                            Err(_e) => {}
+                        }
+                    }
+                    None => {}
+                }
+
+                // Delay for a random amount of time between 1 and 2 seconds ???
+                let random = device.rng().next_u32().map_err(crate::device::Error::Rng)?;
+                let delay_ms = 1000 + (random % 1000);
+                device.timer().reset();
+                let delay_fut = device
+                    .timer()
+                    .at(delay_ms as u64)
+                    .map_err(crate::device::Error::Timer)?;
+                delay_fut.await;
             }
         }
         Ok(None)

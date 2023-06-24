@@ -3,6 +3,8 @@
 pub enum Error {
     BufferFull,
 }
+
+#[derive(Clone)]
 pub struct RadioBuffer<const N: usize> {
     packet: [u8; N],
     pos: usize,

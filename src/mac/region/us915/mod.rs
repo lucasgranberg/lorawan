@@ -2,35 +2,51 @@ use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
 use crate::mac::types::DR;
 
-pub struct Us915;
+pub struct US915;
 
-impl crate::mac::Region for Us915 {
-    fn default_channels() -> u8 {
-        72
+// TODO need to specify DR4 for the 8 500KHz uplink channels ???
+
+impl crate::mac::Region for US915 {
+    fn default_channels(is_uplink: bool) -> usize {
+        if is_uplink {
+            72
+        } else {
+            8
+        }
     }
 
-    fn mandatory_frequencies() -> &'static [u32] {
-        todo!()
+    fn mandatory_frequency(index: usize, is_uplink: bool) -> u32 {
+        if is_uplink {
+            // upstream: 64 (902.3 to 914.9 [+ by 0.2]) + 8 (903.0 to 914.2 [+ by 1.6])
+            if index < 64 {
+                (902_300_000 + (200_000 * index)) as u32
+            } else {
+                (903_000_000 + (1_600_000 * (index - 64))) as u32
+            }
+        } else {
+            // downstream: 8 (923.3 to 927.5 [+ by 0.6])
+            (923_300_000 + (600_000 * index)) as u32
+        }
     }
 
     fn min_data_rate_join_req() -> DR {
-        todo!()
+        DR::_0
     }
 
     fn max_data_rate_join_req() -> DR {
-        todo!()
+        DR::_4
     }
 
     fn min_data_rate() -> DR {
-        todo!()
+        DR::_0
     }
 
     fn max_data_rate() -> DR {
-        todo!()
+        DR::_4
     }
 
     fn default_data_rate() -> DR {
-        todo!()
+        DR::_0
     }
 
     fn default_coding_rate() -> CodingRate {
@@ -38,7 +54,7 @@ impl crate::mac::Region for Us915 {
     }
 
     fn default_rx2_frequency() -> u32 {
-        923300000
+        923_300_000
     }
 
     fn default_rx2_data_rate() -> DR {
@@ -107,25 +123,24 @@ impl crate::mac::Region for Us915 {
         }
     }
 
-    fn get_receive_window(rx_dr_offset: DR, downstream_dr: DR) -> DR {
-        let rx_dr_offset_nr = rx_dr_offset as u8;
-        let start: u8 = match downstream_dr {
-            DR::_0 => 10,
-            DR::_1 => 11,
-            DR::_2 => 12,
-            DR::_3 => 13,
-            DR::_4 => 14,
-            DR::_5 => 10,
-            DR::_6 => 11,
-            _ => 10,
-        };
-        let nr: u8 = start - rx_dr_offset_nr;
-        if nr < 8 {
-            DR::_8
-        } else if nr < 14 {
-            nr.try_into().unwrap()
-        } else {
-            DR::_13
+    fn get_rx1_dr(ul_dr: DR, rx1_dr_offset: u8) -> Result<DR, super::Error> {
+        if rx1_dr_offset > 3 {
+            return Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset));
+        }
+        let dl_dr_matrix = [
+            [DR::_10, DR::_9, DR::_8, DR::_8],
+            [DR::_11, DR::_10, DR::_9, DR::_8],
+            [DR::_12, DR::_11, DR::_10, DR::_9],
+            [DR::_13, DR::_12, DR::_11, DR::_10],
+            [DR::_13, DR::_13, DR::_12, DR::_11],
+        ];
+        match ul_dr {
+            DR::_0 => Ok(dl_dr_matrix[0][rx1_dr_offset as usize]),
+            DR::_1 => Ok(dl_dr_matrix[1][rx1_dr_offset as usize]),
+            DR::_2 => Ok(dl_dr_matrix[2][rx1_dr_offset as usize]),
+            DR::_3 => Ok(dl_dr_matrix[3][rx1_dr_offset as usize]),
+            DR::_4 => Ok(dl_dr_matrix[4][rx1_dr_offset as usize]),
+            _ => return Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset)),
         }
     }
 
