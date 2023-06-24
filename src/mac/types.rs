@@ -3,21 +3,13 @@ use crate::encoding::parser::{DecryptedJoinAcceptPayload, DevAddr, DevNonce};
 
 pub(crate) struct RxWindows {
     pub(crate) rx1_open: u16,
-    pub(crate) rx1_close: u16,
     pub(crate) rx2_open: u16,
-    pub(crate) rx2_close: u16,
 }
 impl RxWindows {
     pub(crate) fn get_open(&self, window: &Window) -> u16 {
         match window {
             Window::_1 => self.rx1_open,
             Window::_2 => self.rx2_open,
-        }
-    }
-    pub(crate) fn get_close(&self, window: &Window) -> u16 {
-        match window {
-            Window::_1 => self.rx1_close,
-            Window::_2 => self.rx2_close,
         }
     }
 }
@@ -186,6 +178,12 @@ pub enum DR {
     _13 = 13,
     _14 = 14,
     _15 = 15,
+}
+
+impl DR {
+    pub fn in_range(&self, range: (DR, DR)) -> bool {
+        (range.0 as u8 <= *self as u8) && (*self as u8 <= range.1 as u8)
+    }
 }
 
 impl TryFrom<u8> for DR {

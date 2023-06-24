@@ -4,13 +4,13 @@ use crate::mac::types::DR;
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 
-pub struct Eu868;
-impl crate::mac::Region for Eu868 {
-    fn mandatory_frequencies() -> &'static [u32] {
-        &JOIN_CHANNELS
-    }
-    fn default_channels() -> u8 {
+pub struct EU868;
+impl crate::mac::Region for EU868 {
+    fn default_channels(_is_uplink: bool) -> usize {
         3
+    }
+    fn mandatory_frequency(index: usize, _is_uplink: bool) -> u32 {
+        JOIN_CHANNELS[index]
     }
     fn min_frequency() -> u32 {
         863000000
@@ -27,7 +27,7 @@ impl crate::mac::Region for Eu868 {
     }
 
     fn max_data_rate() -> DR {
-        DR::_6
+        DR::_5
     }
     fn min_data_rate_join_req() -> DR {
         DR::_0
@@ -98,16 +98,26 @@ impl crate::mac::Region for Eu868 {
         }
     }
 
-    fn get_receive_window(rx_dr_offset: DR, downstream_dr: DR) -> DR {
-        let downstream_dr_nr = downstream_dr as u8;
-        let rx_dr_offset_nr = rx_dr_offset as u8;
-        match rx_dr_offset as u8 {
-            1..=7 if rx_dr_offset_nr < downstream_dr_nr => {
-                (downstream_dr_nr + rx_dr_offset_nr).try_into().unwrap()
-            }
-            8 | 10 if downstream_dr == DR::_0 => DR::_1,
-            9 | 11 if downstream_dr_nr < 2 => (downstream_dr_nr + 1).try_into().unwrap(),
-            _ => DR::_0,
+    fn get_rx1_dr(ul_dr: DR, rx1_dr_offset: u8) -> Result<DR, super::Error> {
+        if rx1_dr_offset > 5 {
+            return Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset));
+        }
+        let dl_dr_matrix = [
+            [DR::_0, DR::_0, DR::_0, DR::_0, DR::_0, DR::_0],
+            [DR::_1, DR::_0, DR::_0, DR::_0, DR::_0, DR::_0],
+            [DR::_2, DR::_1, DR::_0, DR::_0, DR::_0, DR::_0],
+            [DR::_3, DR::_2, DR::_1, DR::_0, DR::_0, DR::_0],
+            [DR::_4, DR::_3, DR::_2, DR::_1, DR::_0, DR::_0],
+            [DR::_5, DR::_4, DR::_3, DR::_2, DR::_1, DR::_0],
+        ];
+        match ul_dr {
+            DR::_0 => Ok(dl_dr_matrix[0][rx1_dr_offset as usize]),
+            DR::_1 => Ok(dl_dr_matrix[1][rx1_dr_offset as usize]),
+            DR::_2 => Ok(dl_dr_matrix[2][rx1_dr_offset as usize]),
+            DR::_3 => Ok(dl_dr_matrix[3][rx1_dr_offset as usize]),
+            DR::_4 => Ok(dl_dr_matrix[4][rx1_dr_offset as usize]),
+            DR::_5 => Ok(dl_dr_matrix[5][rx1_dr_offset as usize]),
+            _ => return Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset)),
         }
     }
 }
