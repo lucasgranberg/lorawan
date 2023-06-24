@@ -480,7 +480,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> DecryptedJoinAcceptPayload<
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CfList {
     DynamicChannel([Frequency; 5]),
-    FixedChannel(ChannelMask<9>),
+    FixedChannel(ChannelMask<12>),
 }
 
 impl<T: AsRef<[u8]>, F> DecryptedJoinAcceptPayload<T, F> {
@@ -528,7 +528,7 @@ impl<T: AsRef<[u8]>, F> DecryptedJoinAcceptPayload<T, F> {
             ];
             Some(CfList::DynamicChannel(res))
         } else if c_f_list_type == 1 {
-            Some(CfList::FixedChannel(ChannelMask::new_from_raw(&d[13..22])))
+            Some(CfList::FixedChannel(ChannelMask::new_from_raw(&d[13..25])))
         } else {
             None
         }

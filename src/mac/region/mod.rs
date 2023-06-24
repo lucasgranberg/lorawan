@@ -12,9 +12,10 @@ pub enum Error {
     InvalidChannelMaskCtrl,
     InvalidFrequency,
     DataRateNotSupported(DR),
+    UnsupportedRx1DROffset(DR, u8),
     NoValidChannelFound,
     InvalidCfListType,
-    CommandNotImplmentedForRegion,
+    CommandNotImplementedForRegion,
 }
 impl<D> From<Error> for crate::Error<D>
 where
@@ -25,8 +26,8 @@ where
     }
 }
 pub trait Region {
-    fn default_channels() -> u8;
-    fn mandatory_frequencies() -> &'static [u32];
+    fn default_channels(is_uplink: bool) -> usize;
+    fn mandatory_frequency(index: usize, is_uplink: bool) -> u32;
     fn min_data_rate_join_req() -> DR;
     fn max_data_rate_join_req() -> DR;
     fn min_data_rate() -> DR;
@@ -39,7 +40,7 @@ pub trait Region {
     fn min_frequency() -> u32;
     fn max_frequency() -> u32;
     fn convert_data_rate(dr: DR) -> Result<Datarate, Error>;
-    fn get_receive_window(rx_dr_offset: DR, downstream_dr: DR) -> DR;
+    fn get_rx1_dr(ul_dr: DR, rx1_dr_offset: u8) -> Result<DR, Error>;
     fn supports_tx_param_setup() -> bool;
     fn modify_dbm(tx_power: u8, cur_dbm: Option<u8>, max_eirp: u8) -> Result<Option<u8>, Error>;
 

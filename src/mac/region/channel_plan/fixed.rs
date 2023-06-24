@@ -2,146 +2,205 @@ use core::marker::PhantomData;
 
 use super::Error;
 use crate::encoding::maccommands::Frequency;
+use crate::encoding::parser::CfList;
 use crate::mac::region::Region;
-use crate::mac::types::DR;
+use crate::mac::types::*;
 
-use super::{Channel, ChannelPlan};
+use super::{Channel, ChannelPlan, MAX_CHANNELS, NUM_OF_CHANNELS_IN_BLOCK, NUM_OF_CHANNEL_BLOCKS};
 
+#[derive(Debug, Clone, Copy)]
 pub struct FixedChannel {
-    pub(crate) frequency: u32,
+    pub(crate) ul_frequency: u32,
+    pub(crate) dl_frequency: u32,
+    pub(crate) ul_data_rate_range: (DR, DR),
 }
 impl Channel for FixedChannel {
-    fn get_frequency(&self) -> u32 {
-        self.frequency
+    fn get_ul_frequency(&self) -> u32 {
+        self.ul_frequency
+    }
+
+    fn get_dl_frequency(&self) -> u32 {
+        self.dl_frequency
     }
 }
-pub struct FixedChannelPlan<R, L>
+pub struct FixedChannelPlan<R>
 where
     R: Region,
-    L: FixedChannelList,
 {
+    channels: [Option<FixedChannel>; MAX_CHANNELS],
+    mask: [bool; MAX_CHANNELS],
     region: PhantomData<R>,
-    list: PhantomData<L>,
 }
 
-impl<R, L> ChannelPlan<R> for FixedChannelPlan<R, L>
+impl<R> Default for FixedChannelPlan<R>
 where
     R: Region,
-    L: FixedChannelList,
+{
+    fn default() -> Self {
+        let mut channels = [None; MAX_CHANNELS];
+        for index in 0..R::default_channels(true) {
+            channels[index] = Some(FixedChannel {
+                ul_frequency: R::mandatory_frequency(index, true),
+                dl_frequency: R::mandatory_frequency(index % R::default_channels(false), false),
+                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+            })
+        }
+        Self {
+            channels,
+            mask: [true; MAX_CHANNELS],
+            region: Default::default(),
+        }
+    }
+}
+
+impl<R> ChannelPlan<R> for FixedChannelPlan<R>
+where
+    R: Region,
 {
     type Channel = FixedChannel;
 
-    fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>> {
-        todo!()
+    fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<FixedChannel>> {
+        self.channels.get_mut(index)
     }
 
-    fn get_random_channel(
+    // Randomly choose one valid channel (if one exists) from each channel block  The returned array is likely sparsely populated.
+    fn get_random_channels_from_blocks(
         &self,
-        random: u32,
-        frame: crate::mac::types::Frame,
+        channel_block_randoms: [u32; NUM_OF_CHANNEL_BLOCKS],
+        _frame: crate::mac::types::Frame,
         data_rate: crate::mac::types::DR,
-    ) -> Result<Self::Channel, crate::mac::region::Error> {
-        todo!()
+    ) -> Result<[Option<FixedChannel>; NUM_OF_CHANNEL_BLOCKS], crate::mac::region::Error> {
+        let mut random_channels: [Option<FixedChannel>; NUM_OF_CHANNEL_BLOCKS] =
+            [None; NUM_OF_CHANNEL_BLOCKS];
+
+        for i in 0..NUM_OF_CHANNEL_BLOCKS {
+            let mut count = 0usize;
+            let mut available_channel_ids_in_block: [Option<usize>; NUM_OF_CHANNELS_IN_BLOCK] =
+                [None; NUM_OF_CHANNELS_IN_BLOCK];
+            for j in 0..NUM_OF_CHANNELS_IN_BLOCK {
+                let channel_index: usize = (i * NUM_OF_CHANNELS_IN_BLOCK) + j;
+                if let Some(channel) = &self.channels[channel_index] {
+                    if data_rate.in_range(channel.ul_data_rate_range) && self.mask[channel_index] {
+                        available_channel_ids_in_block[count] = Some(channel_index);
+                        count += 1;
+                    }
+                }
+            }
+
+            if count > 0 {
+                let random = channel_block_randoms[i] % (count as u32);
+                let channel_id = available_channel_ids_in_block[random as usize].unwrap();
+                random_channels[i] = self.channels[channel_id];
+            }
+        }
+
+        Ok(random_channels)
     }
 
     fn handle_new_channel_req(
         &mut self,
         payload: crate::encoding::maccommands::NewChannelReqPayload,
     ) -> Result<(), crate::mac::region::Error> {
-        todo!()
+        if (payload.channel_index() as usize) < self.channels.len() {
+            self.channels[payload.channel_index() as usize] = Some(FixedChannel {
+                ul_frequency: payload.frequency().value(),
+                dl_frequency: payload.frequency().value(),
+                ul_data_rate_range: (
+                    DR::try_from(payload.data_rate_range().min_data_rate()).unwrap(),
+                    DR::try_from(payload.data_rate_range().max_data_rate()).unwrap(),
+                ),
+            });
+            Ok(())
+        } else {
+            Err(Error::InvalidChannelIndex)
+        }
     }
 
     fn check_uplink_frequency_exists(&self, index: usize) -> bool {
-        todo!()
+        if (index) < MAX_CHANNELS {
+            return self.channels[index].is_some();
+        }
+        false
     }
 
     fn handle_channel_mask(
         &mut self,
-        new_mask: &mut [bool; 80],
+        new_mask: &mut [bool; MAX_CHANNELS],
         channel_mask: crate::encoding::maccommands::ChannelMask<2>,
         channel_mask_ctrl: u8,
     ) -> Result<(), crate::mac::region::Error> {
-        todo!()
+        match channel_mask_ctrl {
+            0..=4 => {
+                for i in 0..15 {
+                    let index = i + (channel_mask_ctrl * 16) as usize;
+                    new_mask[index] = channel_mask.is_enabled(i).unwrap()
+                }
+                Ok(())
+            }
+            // ???
+            5 => {
+                for i in 0..9 {
+                    let index = i + (channel_mask_ctrl * 16) as usize;
+                    new_mask[index] = channel_mask.is_enabled(i).unwrap()
+                }
+                Ok(())
+            }
+            6 => {
+                new_mask.fill(true);
+                for i in 0..15 {
+                    let index = (i + 64) as usize;
+                    new_mask[index] = channel_mask.is_enabled(i).unwrap()
+                }
+                Ok(())
+            }
+            7 => {
+                new_mask.fill(false);
+                for i in 0..15 {
+                    let index = (i + 64) as usize;
+                    new_mask[index] = channel_mask.is_enabled(i).unwrap()
+                }
+                Ok(())
+            }
+            _ => Err(Error::InvalidChannelMaskCtrl),
+        }
     }
 
-    fn get_channel_mask(&self) -> [bool; 80] {
-        todo!()
+    fn get_channel_mask(&self) -> [bool; MAX_CHANNELS] {
+        self.mask
     }
 
-    fn set_channel_mask(&mut self, mask: [bool; 80]) -> Result<(), crate::mac::region::Error> {
-        todo!()
+    fn set_channel_mask(
+        &mut self,
+        mask: [bool; MAX_CHANNELS],
+    ) -> Result<(), crate::mac::region::Error> {
+        self.mask = mask;
+        Ok(())
     }
 
     fn handle_dl_channel_req(
         &mut self,
-        payload: crate::encoding::maccommands::DlChannelReqPayload,
+        _payload: crate::encoding::maccommands::DlChannelReqPayload,
     ) -> Result<(), crate::mac::region::Error> {
-        Err(Error::CommandNotImplmentedForRegion)
+        Err(Error::CommandNotImplementedForRegion)
     }
 
     fn handle_cf_list(
         &mut self,
         cf_list: crate::encoding::parser::CfList,
     ) -> Result<(), crate::mac::region::Error> {
-        todo!()
-    }
-
-    fn validate_frequency(&self, frequency: u32) -> Result<(), crate::mac::region::Error> {
-        todo!()
-    }
-}
-
-pub trait FixedChannelList {
-    fn len() -> usize;
-    fn channel(id: usize) -> Result<FixedChannel, Error>;
-}
-
-pub struct FixedChannelList800;
-
-impl FixedChannelList for FixedChannelList800 {
-    fn len() -> usize {
-        80
-    }
-
-    fn channel(id: usize) -> Result<FixedChannel, Error> {
-        match id {
-            0..=34 => Ok(FixedChannel {
-                frequency: 863100000 + (200000 * id as u32),
-            }),
-            35 => Ok(FixedChannel {
-                frequency: 865062500,
-            }),
-            36 => Ok(FixedChannel {
-                frequency: 865402500,
-            }),
-            37 => Ok(FixedChannel {
-                frequency: 865602500,
-            }),
-            38 => Ok(FixedChannel {
-                frequency: 86578500,
-            }),
-            39 => Ok(FixedChannel {
-                frequency: 86598500,
-            }),
-            _ => Err(Error::InvalidChannelIndex),
-        }
-    }
-}
-
-pub struct FixedChannelList900;
-
-impl FixedChannelList for FixedChannelList900 {
-    fn len() -> usize {
-        96
-    }
-
-    fn channel(id: usize) -> Result<FixedChannel, Error> {
-        if id < Self::len() {
-            Ok(FixedChannel {
-                frequency: 915100000 + (200000 * id as u32),
-            })
+        if let CfList::FixedChannel(channel_mask) = cf_list {
+            for index in 0..MAX_CHANNELS {
+                self.mask[index] = channel_mask.is_enabled(index).unwrap()
+            }
+            Ok(())
         } else {
-            Err(Error::InvalidChannelIndex)
+            Err(Error::InvalidCfListType)
         }
+    }
+
+    fn validate_frequency(&self, _frequency: u32) -> Result<(), crate::mac::region::Error> {
+        // Possibly the validation done here should only be to check that the frequency is within min/max limits.  It seems to
+        // be mostly called to validate downlink frequencies, and some MAC commands using it are inapplicable to fixed channel plans.
+        Err(Error::CommandNotImplementedForRegion) // ???
     }
 }
