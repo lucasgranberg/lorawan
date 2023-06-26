@@ -216,63 +216,83 @@ pub trait FixedChannelList {
     fn channel(id: usize) -> Result<FixedChannel, Error>;
 }
 
-pub struct FixedChannelList800;
+pub struct FixedChannelList800<R>
+where
+    R: Region,
+{
+    region: PhantomData<R>,
+}
 
-impl FixedChannelList for FixedChannelList800 {
+impl<R> FixedChannelList for FixedChannelList800<R>
+where
+    R: Region,
+{
     fn len() -> usize {
         80 // ???
     }
 
     fn channel(id: usize) -> Result<FixedChannel, Error> {
         match id {
-            0..=34 => Ok(FixedChannel {
-                ul_frequency: 863100000 + (200000 * id as u32),
-                dl_frequency: todo!(),
-                ul_data_rate_range: todo!(),
-            }),
+            0..=34 => {
+                let frequency = 863100000 + (200000 * id as u32);
+                Ok(FixedChannel {
+                    ul_frequency: frequency,
+                    dl_frequency: frequency,
+                    ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                })
+            }
             35 => Ok(FixedChannel {
                 ul_frequency: 865062500,
-                dl_frequency: todo!(),
-                ul_data_rate_range: todo!(),
+                dl_frequency: 865062500,
+                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
             }),
             36 => Ok(FixedChannel {
                 ul_frequency: 865402500,
-                dl_frequency: todo!(),
-                ul_data_rate_range: todo!(),
+                dl_frequency: 865402500,
+                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
             }),
             37 => Ok(FixedChannel {
                 ul_frequency: 865602500,
-                dl_frequency: todo!(),
-                ul_data_rate_range: todo!(),
+                dl_frequency: 865602500,
+                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
             }),
             38 => Ok(FixedChannel {
                 ul_frequency: 86578500,
-                dl_frequency: todo!(),
-                ul_data_rate_range: todo!(),
+                dl_frequency: 86578500,
+                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
             }),
             39 => Ok(FixedChannel {
                 ul_frequency: 86598500,
-                dl_frequency: todo!(),
-                ul_data_rate_range: todo!(),
+                dl_frequency: 86598500,
+                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
             }),
             _ => Err(Error::InvalidChannelIndex),
         }
     }
 }
 
-pub struct FixedChannelList900;
+pub struct FixedChannelList900<R>
+where
+    R: Region,
+{
+    region: PhantomData<R>,
+}
 
-impl FixedChannelList for FixedChannelList900 {
+impl<R> FixedChannelList for FixedChannelList900<R>
+where
+    R: Region,
+{
     fn len() -> usize {
         96
     }
 
     fn channel(id: usize) -> Result<FixedChannel, Error> {
         if id < Self::len() {
+            let frequency = 915100000 + (200000 * id as u32);
             Ok(FixedChannel {
-                ul_frequency: 915100000 + (200000 * id as u32),
-                dl_frequency: todo!(),
-                ul_data_rate_range: todo!(),
+                ul_frequency: frequency,
+                dl_frequency: frequency,
+                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
             })
         } else {
             Err(Error::InvalidChannelIndex)
