@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 
 use super::Error;
-use crate::encoding::maccommands::Frequency;
 use crate::encoding::parser::CfList;
 use crate::mac::region::Region;
 use crate::mac::types::*;
