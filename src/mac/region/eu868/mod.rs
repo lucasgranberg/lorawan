@@ -1,6 +1,6 @@
 use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
-use crate::mac::types::DR;
+use crate::mac::types::{Frame, DR};
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 
@@ -12,6 +12,12 @@ impl crate::mac::Region for EU868 {
     fn mandatory_frequency(index: usize, _is_uplink: bool) -> u32 {
         JOIN_CHANNELS[index]
     }
+    fn mandatory_ul_data_rate_range(_index: usize) -> (DR, DR) {
+        (DR::_0, DR::_5)
+    }
+    fn ul_data_rate_range() -> (DR, DR) {
+        (DR::_0, DR::_5)
+    }
     fn min_frequency() -> u32 {
         863000000
     }
@@ -21,26 +27,18 @@ impl crate::mac::Region for EU868 {
     fn default_rx2_frequency() -> u32 {
         869525000
     }
-
-    fn min_data_rate() -> DR {
-        DR::_0
-    }
-
-    fn max_data_rate() -> DR {
-        DR::_5
-    }
-    fn min_data_rate_join_req() -> DR {
-        DR::_0
-    }
-
-    fn max_data_rate_join_req() -> DR {
-        DR::_5
-    }
     fn default_rx2_data_rate() -> DR {
         DR::_0
     }
     fn default_data_rate() -> DR {
         DR::_0
+    }
+    fn override_ul_data_rate_if_necessary(dr: DR, _frame: Frame, _ul_frequency: u32) -> DR {
+        if dr.in_range(EU868::ul_data_rate_range()) {
+            dr
+        } else {
+            EU868::default_data_rate()
+        }
     }
 
     fn default_rx1_data_rate_offset() -> u8 {

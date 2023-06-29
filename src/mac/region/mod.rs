@@ -1,7 +1,7 @@
 use crate::device::radio::types::{CodingRate, Datarate};
 use crate::device::Device;
 
-use super::types::DR;
+use super::types::{Frame, DR};
 pub mod channel_plan;
 
 #[derive(Debug)]
@@ -28,11 +28,10 @@ where
 pub trait Region {
     fn default_channels(is_uplink: bool) -> usize;
     fn mandatory_frequency(index: usize, is_uplink: bool) -> u32;
-    fn min_data_rate_join_req() -> DR;
-    fn max_data_rate_join_req() -> DR;
-    fn min_data_rate() -> DR;
-    fn max_data_rate() -> DR;
+    fn mandatory_ul_data_rate_range(index: usize) -> (DR, DR);
+    fn ul_data_rate_range() -> (DR, DR);
     fn default_data_rate() -> DR;
+    fn override_ul_data_rate_if_necessary(dr: DR, frame: Frame, ul_frequency: u32) -> DR;
     fn default_coding_rate() -> CodingRate;
     fn default_rx2_frequency() -> u32;
     fn default_rx2_data_rate() -> DR;

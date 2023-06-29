@@ -1,10 +1,8 @@
 use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
-use crate::mac::types::DR;
+use crate::mac::types::{Frame, DR};
 
 pub struct US915;
-
-// TODO need to specify DR4 for the 8 500KHz uplink channels ???
 
 impl crate::mac::Region for US915 {
     fn default_channels(is_uplink: bool) -> usize {
@@ -29,24 +27,39 @@ impl crate::mac::Region for US915 {
         }
     }
 
-    fn min_data_rate_join_req() -> DR {
-        DR::_0
+    fn mandatory_ul_data_rate_range(index: usize) -> (DR, DR) {
+        // 64 125 KHz channels using DR0 through DR3 + 8 500 KHz channels using DR4
+        if index < 64 {
+            (DR::_0, DR::_3)
+        } else {
+            (DR::_4, DR::_4)
+        }
     }
 
-    fn max_data_rate_join_req() -> DR {
-        DR::_4
-    }
-
-    fn min_data_rate() -> DR {
-        DR::_0
-    }
-
-    fn max_data_rate() -> DR {
-        DR::_4
+    fn ul_data_rate_range() -> (DR, DR) {
+        (DR::_0, DR::_4)
     }
 
     fn default_data_rate() -> DR {
         DR::_0
+    }
+
+    fn override_ul_data_rate_if_necessary(dr: DR, frame: Frame, ul_frequency: u32) -> DR {
+        // the 8 500KHz uplink channels always use DR4
+        for index in 0..8 {
+            if (902_300_000 + (200_000 * index)) == ul_frequency {
+                return DR::_4;
+            }
+        }
+
+        // adjust the DR for the 125KHz channels as necessary
+        if frame == Frame::Join {
+            DR::_0
+        } else if dr.in_range((DR::_0, DR::_3)) {
+            dr
+        } else {
+            US915::default_data_rate()
+        }
     }
 
     fn default_coding_rate() -> CodingRate {
