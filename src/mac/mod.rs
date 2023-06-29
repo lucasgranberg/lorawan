@@ -130,18 +130,22 @@ where
     }
     fn max_data_rate(&self) -> DR {
         match S::max_data_rate() {
-            Some(device_max_data_rate) => min(device_max_data_rate as u8, R::max_data_rate() as u8)
-                .try_into()
-                .unwrap(),
-            None => R::max_data_rate(),
+            Some(device_max_data_rate) => {
+                min(device_max_data_rate as u8, R::ul_data_rate_range().1 as u8)
+                    .try_into()
+                    .unwrap()
+            }
+            None => R::ul_data_rate_range().1,
         }
     }
     fn min_data_rate(&self) -> DR {
         match S::min_data_rate() {
-            Some(device_min_data_rate) => max(device_min_data_rate as u8, R::min_data_rate() as u8)
-                .try_into()
-                .unwrap(),
-            None => R::min_data_rate(),
+            Some(device_min_data_rate) => {
+                max(device_min_data_rate as u8, R::ul_data_rate_range().0 as u8)
+                    .try_into()
+                    .unwrap()
+            }
+            None => R::ul_data_rate_range().0,
         }
     }
     fn max_frequency(&self) -> u32 {
@@ -290,12 +294,13 @@ where
         device: &mut D,
         frame: Frame,
         channel: &C::Channel,
+        dr: DR,
     ) -> Result<TxConfig, crate::Error<D>>
     where
         D: MacDevice<R, S>,
     {
         let pw = device.get_tx_pwr(frame, &self.configuration);
-        let data_rate = R::convert_data_rate(self.tx_data_rate())?;
+        let data_rate = R::convert_data_rate(dr)?;
         let tx_config = TxConfig {
             pw,
             rf: RfConfig {
@@ -662,17 +667,19 @@ where
                 channel_block_randoms[i] =
                     device.rng().next_u32().map_err(crate::device::Error::Rng)?;
             }
-            let tx_data_rate = self.tx_data_rate();
-            let channels = self.channel_plan.get_random_channels_from_blocks(
-                channel_block_randoms,
-                frame,
-                tx_data_rate,
-            )?;
+            let channels = self
+                .channel_plan
+                .get_random_channels_from_blocks(channel_block_randoms, frame)?;
 
             for channel in channels {
                 match channel {
                     Some(chn) => {
-                        let tx_config = self.create_tx_config(device, frame, &chn)?;
+                        let tx_data_rate = R::override_ul_data_rate_if_necessary(
+                            self.tx_data_rate(),
+                            frame,
+                            chn.get_ul_frequency(),
+                        );
+                        let tx_config = self.create_tx_config(device, frame, &chn, tx_data_rate)?;
                         trace!("tx config {:?}", tx_config);
                         let _ms = device
                             .radio()

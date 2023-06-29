@@ -21,6 +21,10 @@ impl Channel for FixedChannel {
     fn get_dl_frequency(&self) -> u32 {
         self.dl_frequency
     }
+
+    fn get_ul_data_rate_range(&self) -> (DR, DR) {
+        self.ul_data_rate_range
+    }
 }
 pub struct FixedChannelPlan<R>
 where
@@ -41,7 +45,7 @@ where
             channels[index] = Some(FixedChannel {
                 ul_frequency: R::mandatory_frequency(index, true),
                 dl_frequency: R::mandatory_frequency(index % R::default_channels(false), false),
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::mandatory_ul_data_rate_range(index),
             })
         }
         Self {
@@ -67,7 +71,6 @@ where
         &self,
         channel_block_randoms: [u32; NUM_OF_CHANNEL_BLOCKS],
         _frame: crate::mac::types::Frame,
-        data_rate: crate::mac::types::DR,
     ) -> Result<[Option<FixedChannel>; NUM_OF_CHANNEL_BLOCKS], crate::mac::region::Error> {
         let mut random_channels: [Option<FixedChannel>; NUM_OF_CHANNEL_BLOCKS] =
             [None; NUM_OF_CHANNEL_BLOCKS];
@@ -78,8 +81,8 @@ where
                 [None; NUM_OF_CHANNELS_IN_BLOCK];
             for j in 0..NUM_OF_CHANNELS_IN_BLOCK {
                 let channel_index: usize = (i * NUM_OF_CHANNELS_IN_BLOCK) + j;
-                if let Some(channel) = &self.channels[channel_index] {
-                    if data_rate.in_range(channel.ul_data_rate_range) && self.mask[channel_index] {
+                if let Some(_channel) = &self.channels[channel_index] {
+                    if self.mask[channel_index] {
                         available_channel_ids_in_block[count] = Some(channel_index);
                         count += 1;
                     }
