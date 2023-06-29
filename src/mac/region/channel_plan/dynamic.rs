@@ -21,6 +21,10 @@ impl Channel for DynamicChannel {
     fn get_dl_frequency(&self) -> u32 {
         self.dl_frequency
     }
+
+    fn get_ul_data_rate_range(&self) -> (DR, DR) {
+        self.ul_data_rate_range
+    }
 }
 pub struct DynamicChannelPlan<R, L>
 where
@@ -44,7 +48,7 @@ where
             channels[index] = Some(DynamicChannel {
                 ul_frequency: R::mandatory_frequency(index, true),
                 dl_frequency: R::mandatory_frequency(index, false),
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::mandatory_ul_data_rate_range(index),
             })
         }
         Self {
@@ -74,7 +78,6 @@ where
         &self,
         channel_block_randoms: [u32; NUM_OF_CHANNEL_BLOCKS],
         frame: Frame,
-        data_rate: DR,
     ) -> Result<[Option<DynamicChannel>; NUM_OF_CHANNEL_BLOCKS], Error> {
         let mut random_channels: [Option<DynamicChannel>; NUM_OF_CHANNEL_BLOCKS] =
             [None; NUM_OF_CHANNEL_BLOCKS];
@@ -92,10 +95,8 @@ where
             } else {
                 for j in 0..NUM_OF_CHANNELS_IN_BLOCK {
                     let channel_index: usize = (i * NUM_OF_CHANNELS_IN_BLOCK) + j;
-                    if let Some(channel) = &self.channels[channel_index] {
-                        if data_rate.in_range(channel.ul_data_rate_range)
-                            && self.mask[channel_index]
-                        {
+                    if let Some(_channel) = &self.channels[channel_index] {
+                        if self.mask[channel_index] {
                             available_channel_ids_in_block[count] = Some(channel_index);
                             count += 1;
                         }
@@ -192,7 +193,7 @@ where
                 self.channels[R::default_channels(true) + index] = Some(DynamicChannel {
                     ul_frequency: frequency.value(),
                     dl_frequency: frequency.value(),
-                    ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                    ul_data_rate_range: R::ul_data_rate_range(),
                 })
             }
             Ok(())
@@ -238,33 +239,33 @@ where
                 Ok(FixedChannel {
                     ul_frequency: frequency,
                     dl_frequency: frequency,
-                    ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                    ul_data_rate_range: R::ul_data_rate_range(),
                 })
             }
             35 => Ok(FixedChannel {
                 ul_frequency: 865062500,
                 dl_frequency: 865062500,
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::ul_data_rate_range(),
             }),
             36 => Ok(FixedChannel {
                 ul_frequency: 865402500,
                 dl_frequency: 865402500,
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::ul_data_rate_range(),
             }),
             37 => Ok(FixedChannel {
                 ul_frequency: 865602500,
                 dl_frequency: 865602500,
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::ul_data_rate_range(),
             }),
             38 => Ok(FixedChannel {
                 ul_frequency: 86578500,
                 dl_frequency: 86578500,
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::ul_data_rate_range(),
             }),
             39 => Ok(FixedChannel {
                 ul_frequency: 86598500,
                 dl_frequency: 86598500,
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::ul_data_rate_range(),
             }),
             _ => Err(Error::InvalidChannelIndex),
         }
@@ -292,7 +293,7 @@ where
             Ok(FixedChannel {
                 ul_frequency: frequency,
                 dl_frequency: frequency,
-                ul_data_rate_range: (R::min_data_rate(), R::max_data_rate()),
+                ul_data_rate_range: R::ul_data_rate_range(),
             })
         } else {
             Err(Error::InvalidChannelIndex)

@@ -13,6 +13,7 @@ pub const NUM_OF_CHANNELS_IN_BLOCK: usize = 8;
 pub trait Channel {
     fn get_ul_frequency(&self) -> u32;
     fn get_dl_frequency(&self) -> u32;
+    fn get_ul_data_rate_range(&self) -> (DR, DR);
 }
 pub trait ChannelPlan<R>
 where
@@ -24,7 +25,6 @@ where
         &self,
         channel_block_randoms: [u32; NUM_OF_CHANNEL_BLOCKS],
         frame: Frame,
-        data_rate: DR,
     ) -> Result<[Option<Self::Channel>; NUM_OF_CHANNEL_BLOCKS], Error>;
     fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), Error>;
     fn check_uplink_frequency_exists(&self, index: usize) -> bool;
