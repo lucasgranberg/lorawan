@@ -151,11 +151,14 @@ where
                 }
                 Ok(())
             }
-            // ???
             5 => {
-                for i in 0..9 {
-                    let index = i + (channel_mask_ctrl * 16) as usize;
-                    new_mask[index] = channel_mask.is_enabled(i).unwrap()
+                let channel_mask_be: u16 =
+                    channel_mask.get_index(0) as u16 | ((channel_mask.get_index(1) as u16) << 8);
+                for i in 0..NUM_OF_CHANNEL_BLOCKS {
+                    let is_channel_block_enabled = channel_mask_be & (1 << i) != 0;
+                    for j in 0..NUM_OF_CHANNELS_IN_BLOCK {
+                        new_mask[(i * NUM_OF_CHANNELS_IN_BLOCK) + j] = is_channel_block_enabled;
+                    }
                 }
                 Ok(())
             }
