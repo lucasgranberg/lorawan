@@ -1,3 +1,4 @@
+use super::channel_plan::dynamic::DynamicChannel;
 use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
 use crate::mac::types::{Frame, DR};
@@ -11,6 +12,10 @@ impl crate::mac::Region for US915 {
         } else {
             8
         }
+    }
+
+    fn channel_from_list(_channel_id: usize) -> Result<DynamicChannel, Error> {
+        Err(Error::UnsupportedChannelListForRegion)
     }
 
     fn mandatory_frequency(index: usize, is_uplink: bool) -> u32 {

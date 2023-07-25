@@ -1,3 +1,4 @@
+use super::channel_plan::dynamic::{DynamicChannel, DynamicChannelPlan};
 use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
 use crate::mac::types::{Frame, DR};
@@ -8,6 +9,9 @@ pub struct EU868;
 impl crate::mac::Region for EU868 {
     fn default_channels(_is_uplink: bool) -> usize {
         3
+    }
+    fn channel_from_list(channel_id: usize) -> Result<DynamicChannel, Error> {
+        DynamicChannelPlan::<EU868>::get_800_channel(channel_id)
     }
     fn mandatory_frequency(index: usize, _is_uplink: bool) -> u32 {
         JOIN_CHANNELS[index]

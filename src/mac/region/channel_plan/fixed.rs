@@ -41,16 +41,18 @@ where
 {
     fn default() -> Self {
         let mut channels = [None; MAX_CHANNELS];
+        let mut mask = [false; MAX_CHANNELS];
         for index in 0..R::default_channels(true) {
             channels[index] = Some(FixedChannel {
                 ul_frequency: R::mandatory_frequency(index, true),
                 dl_frequency: R::mandatory_frequency(index % R::default_channels(false), false),
                 ul_data_rate_range: R::mandatory_ul_data_rate_range(index),
-            })
+            });
+            mask[index] = true;
         }
         Self {
             channels,
-            mask: [true; MAX_CHANNELS],
+            mask: mask,
             region: Default::default(),
         }
     }
