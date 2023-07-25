@@ -7,6 +7,8 @@ pub mod fixed;
 use super::{Error, Region};
 
 pub const MAX_CHANNELS: usize = 80;
+pub const MAX_800_CHANNELS: usize = 40;
+pub const MAX_900_CHANNELS: usize = 96;
 pub const NUM_OF_CHANNEL_BLOCKS: usize = 10;
 pub const NUM_OF_CHANNELS_IN_BLOCK: usize = 8;
 

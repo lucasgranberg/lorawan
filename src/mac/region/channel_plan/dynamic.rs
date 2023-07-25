@@ -4,8 +4,10 @@ use crate::mac::region::{Error, Region};
 use crate::mac::types::*;
 use core::marker::PhantomData;
 
-use super::fixed::FixedChannel;
-use super::{Channel, ChannelPlan, MAX_CHANNELS, NUM_OF_CHANNELS_IN_BLOCK, NUM_OF_CHANNEL_BLOCKS};
+use super::{
+    Channel, ChannelPlan, MAX_900_CHANNELS, MAX_CHANNELS, NUM_OF_CHANNELS_IN_BLOCK,
+    NUM_OF_CHANNEL_BLOCKS,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicChannel {
@@ -26,44 +28,97 @@ impl Channel for DynamicChannel {
         self.ul_data_rate_range
     }
 }
-pub struct DynamicChannelPlan<R, L>
+pub struct DynamicChannelPlan<R>
 where
     R: Region,
-    L: FixedChannelList,
 {
     channels: [Option<DynamicChannel>; MAX_CHANNELS],
     mask: [bool; MAX_CHANNELS],
     region: PhantomData<R>,
-    list: PhantomData<L>,
 }
 
-impl<R, L> Default for DynamicChannelPlan<R, L>
+impl<R> DynamicChannelPlan<R>
 where
     R: Region,
-    L: FixedChannelList,
+{
+    pub fn get_800_channel(id: usize) -> Result<DynamicChannel, Error> {
+        match id {
+            0..=34 => {
+                let frequency = 863100000 + (200000 * id as u32);
+                Ok(DynamicChannel {
+                    ul_frequency: frequency,
+                    dl_frequency: frequency,
+                    ul_data_rate_range: R::ul_data_rate_range(),
+                })
+            }
+            35 => Ok(DynamicChannel {
+                ul_frequency: 865062500,
+                dl_frequency: 865062500,
+                ul_data_rate_range: R::ul_data_rate_range(),
+            }),
+            36 => Ok(DynamicChannel {
+                ul_frequency: 865402500,
+                dl_frequency: 865402500,
+                ul_data_rate_range: R::ul_data_rate_range(),
+            }),
+            37 => Ok(DynamicChannel {
+                ul_frequency: 865602500,
+                dl_frequency: 865602500,
+                ul_data_rate_range: R::ul_data_rate_range(),
+            }),
+            38 => Ok(DynamicChannel {
+                ul_frequency: 86578500,
+                dl_frequency: 86578500,
+                ul_data_rate_range: R::ul_data_rate_range(),
+            }),
+            39 => Ok(DynamicChannel {
+                ul_frequency: 86598500,
+                dl_frequency: 86598500,
+                ul_data_rate_range: R::ul_data_rate_range(),
+            }),
+            _ => Err(Error::InvalidChannelIndex),
+        }
+    }
+
+    pub fn get_900_channel(id: usize) -> Result<DynamicChannel, Error> {
+        if id >= MAX_900_CHANNELS {
+            return Err(Error::InvalidChannelIndex);
+        }
+        let frequency = 915100000 + (100000 * id as u32);
+        Ok(DynamicChannel {
+            ul_frequency: frequency,
+            dl_frequency: frequency,
+            ul_data_rate_range: R::ul_data_rate_range(),
+        })
+    }
+}
+
+impl<R> Default for DynamicChannelPlan<R>
+where
+    R: Region,
 {
     fn default() -> Self {
         let mut channels = [None; MAX_CHANNELS];
+        let mut mask = [false; MAX_CHANNELS];
         for index in 0..R::default_channels(true) {
             channels[index] = Some(DynamicChannel {
                 ul_frequency: R::mandatory_frequency(index, true),
                 dl_frequency: R::mandatory_frequency(index, false),
                 ul_data_rate_range: R::mandatory_ul_data_rate_range(index),
-            })
+            });
+            mask[index] = true;
         }
         Self {
             channels,
-            mask: [true; MAX_CHANNELS],
+            mask: mask,
             region: Default::default(),
-            list: Default::default(),
         }
     }
 }
 
-impl<R, L> ChannelPlan<R> for DynamicChannelPlan<R, L>
+impl<R> ChannelPlan<R> for DynamicChannelPlan<R>
 where
     R: Region,
-    L: FixedChannelList,
 {
     type Channel = DynamicChannel;
 
@@ -191,17 +246,47 @@ where
     }
 
     fn handle_cf_list(&mut self, cf_list: CfList) -> Result<(), Error> {
-        if let CfList::DynamicChannel(cf_list) = cf_list {
-            for (index, frequency) in cf_list.iter().enumerate() {
-                self.channels[R::default_channels(true) + index] = Some(DynamicChannel {
-                    ul_frequency: frequency.value(),
-                    dl_frequency: frequency.value(),
-                    ul_data_rate_range: R::ul_data_rate_range(),
-                })
+        match cf_list {
+            CfList::DynamicChannel(cf_list) => {
+                let mut index: usize = R::default_channels(true);
+                for frequency in cf_list.iter() {
+                    if frequency.value() > 0 {
+                        self.channels[index] = Some(DynamicChannel {
+                            ul_frequency: frequency.value(),
+                            dl_frequency: frequency.value(),
+                            ul_data_rate_range: R::ul_data_rate_range(),
+                        });
+                        self.mask[index] = true;
+                    }
+                    index += 1;
+                }
+                for i in index..MAX_CHANNELS {
+                    self.channels[i] = None;
+                    self.mask[i] = false;
+                }
+                Ok(())
             }
-            Ok(())
-        } else {
-            Err(Error::InvalidCfListType)
+            CfList::FixedChannel(channel_mask) => {
+                let mut index: usize = R::default_channels(true);
+                let mut channel_list_index: usize = 0;
+                while index < MAX_CHANNELS {
+                    if let Ok(channel) = R::channel_from_list(channel_list_index) {
+                        if channel_mask.is_enabled(channel_list_index).unwrap() {
+                            self.channels[index] = Some(channel);
+                            self.mask[index] = true;
+                            index += 1;
+                        }
+                        channel_list_index += 1;
+                    } else {
+                        break; // have reached the end of the channel list
+                    }
+                }
+                for i in index..MAX_CHANNELS {
+                    self.channels[i] = None;
+                    self.mask[i] = false;
+                }
+                Ok(())
+            }
         }
     }
 
@@ -212,94 +297,5 @@ where
             }
         }
         Err(Error::InvalidFrequency)
-    }
-}
-
-pub trait FixedChannelList {
-    fn len() -> usize;
-    fn channel(id: usize) -> Result<FixedChannel, Error>;
-}
-
-pub struct FixedChannelList800<R>
-where
-    R: Region,
-{
-    region: PhantomData<R>,
-}
-
-impl<R> FixedChannelList for FixedChannelList800<R>
-where
-    R: Region,
-{
-    fn len() -> usize {
-        80 // ???
-    }
-
-    fn channel(id: usize) -> Result<FixedChannel, Error> {
-        match id {
-            0..=34 => {
-                let frequency = 863100000 + (200000 * id as u32);
-                Ok(FixedChannel {
-                    ul_frequency: frequency,
-                    dl_frequency: frequency,
-                    ul_data_rate_range: R::ul_data_rate_range(),
-                })
-            }
-            35 => Ok(FixedChannel {
-                ul_frequency: 865062500,
-                dl_frequency: 865062500,
-                ul_data_rate_range: R::ul_data_rate_range(),
-            }),
-            36 => Ok(FixedChannel {
-                ul_frequency: 865402500,
-                dl_frequency: 865402500,
-                ul_data_rate_range: R::ul_data_rate_range(),
-            }),
-            37 => Ok(FixedChannel {
-                ul_frequency: 865602500,
-                dl_frequency: 865602500,
-                ul_data_rate_range: R::ul_data_rate_range(),
-            }),
-            38 => Ok(FixedChannel {
-                ul_frequency: 86578500,
-                dl_frequency: 86578500,
-                ul_data_rate_range: R::ul_data_rate_range(),
-            }),
-            39 => Ok(FixedChannel {
-                ul_frequency: 86598500,
-                dl_frequency: 86598500,
-                ul_data_rate_range: R::ul_data_rate_range(),
-            }),
-            _ => Err(Error::InvalidChannelIndex),
-        }
-    }
-}
-
-pub struct FixedChannelList900<R>
-where
-    R: Region,
-{
-    region: PhantomData<R>,
-}
-
-impl<R> FixedChannelList for FixedChannelList900<R>
-where
-    R: Region,
-{
-    fn len() -> usize {
-        96
-    }
-
-    fn channel(id: usize) -> Result<FixedChannel, Error> {
-        if id < Self::len() {
-            let frequency = 915100000 + (200000 * id as u32);
-            Ok(FixedChannel {
-                ul_frequency: frequency,
-                dl_frequency: frequency,
-                ul_data_rate_range: R::ul_data_rate_range(),
-            })
-        } else {
-            Err(Error::InvalidChannelIndex)
-        }
     }
 }
