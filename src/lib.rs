@@ -4,6 +4,8 @@
 #![feature(concat_idents)]
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
+#![warn(missing_docs)]
+#![doc = include_str!("../README.md")]
 
 use core::fmt::Debug;
 mod fmt;
