@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/lucasgranberg/lorawan/actions/workflows/ci.yaml/badge.svg)](https://github.com/lucasgranberg/lorawan/actions/workflows/ci.yaml)
 
-## Why?
+## To be provided
 
 ## Chat
 
