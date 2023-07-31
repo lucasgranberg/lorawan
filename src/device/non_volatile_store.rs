@@ -3,6 +3,7 @@
 use core::fmt::Debug;
 
 pub trait NonVolatileStore {
+    /// Possible result error.
     #[cfg(feature = "defmt")]
     type Error: Debug + defmt::Format;
 

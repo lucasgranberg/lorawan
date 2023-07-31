@@ -23,7 +23,9 @@ pub trait ChannelPlan<R>
 where
     R: Region,
 {
+    /// Dynamic or fixed channel type.
     type Channel: Channel;
+
     fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>>;
     fn get_random_channels_from_blocks(
         &self,

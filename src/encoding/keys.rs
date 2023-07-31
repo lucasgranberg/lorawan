@@ -54,8 +54,11 @@ pub trait Cmac {
 ///
 /// This trait provides a way to pick a different implementation of the crypto primitives.
 pub trait CryptoFactory {
+    /// Encrypter type.
     type E: Encrypter;
+    /// Decrypter type.
     type D: Decrypter;
+    /// MAC calculator type.
     type M: Cmac;
 
     /// Method that creates an Encrypter.
