@@ -5,6 +5,9 @@
 // copied, modified, or distributed except according to those terms.
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
+
+//! Specification of the encryption/decryption features for keys used by LoRaWAN packets.
+
 use super::securityhelpers::generic_array::{typenum::U16, GenericArray};
 
 /// AES128 represents 128 bit AES key.

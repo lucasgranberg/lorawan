@@ -1,5 +1,8 @@
+//! Buffer functionality for send/receive data tranmission between the caller and the LoRa physical layer.
+
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
 pub enum Error {
     BufferFull,
 }
@@ -11,19 +14,13 @@ pub struct RadioBuffer<const N: usize> {
 }
 impl<const N: usize> Default for RadioBuffer<N> {
     fn default() -> Self {
-        Self {
-            packet: [0; N],
-            pos: Default::default(),
-        }
+        Self { packet: [0; N], pos: Default::default() }
     }
 }
 
 impl<const N: usize> RadioBuffer<N> {
     pub fn new() -> Self {
-        Self {
-            packet: [0; N],
-            pos: 0,
-        }
+        Self { packet: [0; N], pos: 0 }
     }
 
     pub fn clear(&mut self) {

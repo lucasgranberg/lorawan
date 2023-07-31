@@ -1,3 +1,5 @@
+//! Specification of functionality implemented for each supported LoRaWAN region.
+
 use crate::device::radio::types::{CodingRate, Datarate};
 use crate::device::Device;
 
@@ -8,6 +10,7 @@ pub mod channel_plan;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
 pub enum Error {
     InvalidTxPower,
     InvalidChannelIndex,

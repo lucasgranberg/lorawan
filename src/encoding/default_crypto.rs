@@ -5,6 +5,9 @@
 // copied, modified, or distributed except according to those terms.
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
+
+//! Default encryption/decryption facility.
+
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
 use generic_array::typenum::U16;

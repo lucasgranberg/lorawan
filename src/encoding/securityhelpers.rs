@@ -5,6 +5,9 @@
 // copied, modified, or distributed except according to those terms.
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
+
+//! Helpers for key and encryption processing.
+
 use super::keys;
 pub use generic_array;
 use generic_array::GenericArray;

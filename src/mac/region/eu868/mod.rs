@@ -1,3 +1,5 @@
+//! Processing for the EU868 region, which uses a dynamic channel plan.
+
 use super::channel_plan::dynamic::{DynamicChannel, DynamicChannelPlan};
 use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
@@ -119,7 +121,7 @@ impl crate::mac::Region for EU868 {
             DR::_3 => Ok(dl_dr_matrix[3][rx1_dr_offset as usize]),
             DR::_4 => Ok(dl_dr_matrix[4][rx1_dr_offset as usize]),
             DR::_5 => Ok(dl_dr_matrix[5][rx1_dr_offset as usize]),
-            _ => return Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset)),
+            _ => Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset)),
         }
     }
 }

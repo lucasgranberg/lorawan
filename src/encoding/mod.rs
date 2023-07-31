@@ -6,7 +6,8 @@
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
 
-//! This module implements LoRaWAN packet handling and parsing.
+//! LoRaWAN packet handling and parsing.
+
 #![allow(clippy::upper_case_acronyms)]
 
 use crate::device::Device;
@@ -22,6 +23,7 @@ mod securityhelpers;
 
 #[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
 pub enum Error {
     OutOfRange,
     BufferTooSmall,

@@ -1,3 +1,5 @@
+//! Processing for the US915 region, which uses a fixed channel plan.
+
 use super::channel_plan::dynamic::DynamicChannel;
 use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
@@ -158,7 +160,7 @@ impl crate::mac::Region for US915 {
             DR::_2 => Ok(dl_dr_matrix[2][rx1_dr_offset as usize]),
             DR::_3 => Ok(dl_dr_matrix[3][rx1_dr_offset as usize]),
             DR::_4 => Ok(dl_dr_matrix[4][rx1_dr_offset as usize]),
-            _ => return Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset)),
+            _ => Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset)),
         }
     }
 

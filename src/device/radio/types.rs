@@ -1,7 +1,10 @@
+//! Types used to control communication with the LoRa physical layer.
+
 use lora_phy;
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub enum Bandwidth {
     _125KHz,
     _250KHz,
@@ -21,6 +24,7 @@ impl From<Bandwidth> for lora_phy::mod_params::Bandwidth {
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub enum SpreadingFactor {
     _7,
     _8,
@@ -46,6 +50,7 @@ impl From<SpreadingFactor> for lora_phy::mod_params::SpreadingFactor {
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub enum CodingRate {
     _4_5,
     _4_6,

@@ -1,3 +1,5 @@
+//! Fixed channel plan processing.
+
 use core::marker::PhantomData;
 
 use super::Error;
@@ -50,11 +52,7 @@ where
             });
             mask[index] = true;
         }
-        Self {
-            channels,
-            mask: mask,
-            region: Default::default(),
-        }
+        Self { channels, mask, region: Default::default() }
     }
 }
 
@@ -158,7 +156,7 @@ where
             6 => {
                 new_mask.fill(true);
                 for i in 0..15 {
-                    let index = (i + 64) as usize;
+                    let index = i + 64;
                     new_mask[index] = channel_mask.is_enabled(i).unwrap()
                 }
                 Ok(())
@@ -166,7 +164,7 @@ where
             7 => {
                 new_mask.fill(false);
                 for i in 0..15 {
-                    let index = (i + 64) as usize;
+                    let index = i + 64;
                     new_mask[index] = channel_mask.is_enabled(i).unwrap()
                 }
                 Ok(())

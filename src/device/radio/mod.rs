@@ -1,11 +1,10 @@
+//! LoRa radio functionality which must be implemented by calling code.
+
 pub mod types;
 use core::fmt::Debug;
 use types::*;
 
-/// An asynchronous timer that allows the state machine to await
-/// between RX windows.
-
-/// An asynchronous radio implementation that can transmit and receive data.
+/// An asynchronous radio implementation that can transmit and receive data and sleep when unneeded.
 pub trait Radio: Sized {
     #[cfg(feature = "defmt")]
     type Error: Debug + defmt::Format;

@@ -6,6 +6,8 @@
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
 
+//! LoRaWAN MAC command processing features.
+
 use super::Error;
 use core::convert::Infallible;
 pub trait SerializableMacCommand {
@@ -111,7 +113,7 @@ macro_rules! mac_cmds_enum {
     ) => {
         #[derive(Debug, PartialEq)]
         #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-        #[allow(clippy::len_without_is_empty)]
+        #[allow(clippy::len_without_is_empty, missing_docs)]
         $outer_vis enum $outer_type$(<$outer_lifetime>)* {
             $(
                 $name($type$(<$lifetime>)*),
@@ -409,11 +411,7 @@ pub struct MacCommandIterator<'a, T> {
 
 impl<'a, T> MacCommandIterator<'a, T> {
     pub fn new(data: &'a [u8]) -> Self {
-        Self {
-            data,
-            index: 0,
-            item: Default::default(),
-        }
+        Self { data, index: 0, item: Default::default() }
     }
 }
 
@@ -524,9 +522,7 @@ impl<'de, const N: usize> serde::de::Visitor<'de> for ChannelMaskDeserializer<N>
         let mut index = 0;
         while let Some(el) = seq.next_element()? {
             if index >= N {
-                return Err(serde::de::Error::custom(
-                    "ChannelMask has too many elements",
-                ));
+                return Err(serde::de::Error::custom("ChannelMask has too many elements"));
             } else {
                 arr[index] = el;
                 index += 1;
