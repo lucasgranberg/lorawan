@@ -1,3 +1,5 @@
+//! Specification of the functionality implemented for dynamic and fixed channel plans.
+
 use crate::encoding::maccommands::{ChannelMask, DlChannelReqPayload, NewChannelReqPayload};
 use crate::encoding::parser::CfList;
 use crate::mac::types::*;

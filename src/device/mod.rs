@@ -1,3 +1,5 @@
+//! Wrapper for all necessary functionality implemented by calling code.
+
 pub mod non_volatile_store;
 pub mod radio;
 pub mod radio_buffer;
@@ -14,6 +16,7 @@ use self::non_volatile_store::NonVolatileStore;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
 pub enum Error<D>
 where
     D: Device,

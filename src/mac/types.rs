@@ -1,3 +1,5 @@
+//! Properties used in LoRaWAN MAC processing.
+
 use crate::encoding::keys::{CryptoFactory, AES128};
 use crate::encoding::parser::{DecryptedJoinAcceptPayload, DevAddr, DevNonce};
 
@@ -52,12 +54,7 @@ pub struct Credentials {
 }
 impl Credentials {
     pub fn new(app_eui: [u8; 8], dev_eui: [u8; 8], app_key: [u8; 16]) -> Self {
-        Self {
-            app_eui,
-            dev_eui,
-            app_key: AES128(app_key),
-            dev_nonce: 0,
-        }
+        Self { app_eui, dev_eui, app_key: AES128(app_key), dev_nonce: 0 }
     }
     pub fn incr_dev_nonce(&mut self) {
         self.dev_nonce += 1;
@@ -91,13 +88,7 @@ impl Session {
     }
 
     pub fn new(newskey: AES128, appskey: AES128, devaddr: DevAddr<[u8; 4]>) -> Self {
-        Self {
-            newskey,
-            appskey,
-            devaddr,
-            fcnt_up: 0,
-            fcnt_down: 0,
-        }
+        Self { newskey, appskey, devaddr, fcnt_up: 0, fcnt_down: 0 }
     }
 
     pub fn newskey(&self) -> &AES128 {
@@ -160,6 +151,7 @@ impl From<Storable> for &[u8] {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
 #[repr(u8)]
 pub enum DR {
     _0 = 0,
@@ -213,6 +205,7 @@ impl TryFrom<u8> for DR {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum MType {
     JoinRequest,
     JoinAccept,
@@ -224,11 +217,13 @@ pub enum MType {
     Proprietary,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum Frame {
     Join,
     Data,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum Window {
     _1,
     _2,

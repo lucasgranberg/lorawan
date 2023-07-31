@@ -1,3 +1,5 @@
+//! Dynamic channel plan processing.
+
 use crate::encoding::maccommands::{ChannelMask, DlChannelReqPayload, NewChannelReqPayload};
 use crate::encoding::parser::CfList;
 use crate::mac::region::{Error, Region};
@@ -108,11 +110,7 @@ where
             });
             mask[index] = true;
         }
-        Self {
-            channels,
-            mask: mask,
-            region: Default::default(),
-        }
+        Self { channels, mask, region: Default::default() }
     }
 }
 
@@ -143,7 +141,7 @@ where
                 [None; NUM_OF_CHANNELS_IN_BLOCK];
 
             if (i == 0) && (frame == Frame::Join) {
-                for j in 0..R::default_channels(true) as usize {
+                for j in 0..R::default_channels(true) {
                     available_channel_ids_in_block[count] = Some(j);
                     count += 1;
                 }

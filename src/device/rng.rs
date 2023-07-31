@@ -1,3 +1,5 @@
+//! Random number generation functionality which must be implemented by calling code.
+
 use core::fmt::Debug;
 pub trait Rng {
     #[cfg(feature = "defmt")]

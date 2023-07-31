@@ -6,6 +6,8 @@
 //
 // Author: Ivaylo Petrov <ivajloip@gmail.com>
 
+//! Creation functionality for LoRaWAN MAC commands.
+
 use super::Error;
 
 use super::maccommands::*;
@@ -18,7 +20,7 @@ macro_rules! mac_cmds_creator_enum {
         )*
     }
     ) => {
-        #[allow(dead_code)]
+        #[allow(dead_code, missing_docs)]
         #[derive(Debug)]
         #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         $outer_vis enum $outer_type$(<$outer_lifetime>)* {

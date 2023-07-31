@@ -1,5 +1,9 @@
+//! Timer functionality which must be implemented by calling code.
+
 use core::{fmt::Debug, future::Future};
 
+/// An asynchronous timer that allows the state machine to await
+/// between RX windows.
 pub trait Timer: Sized {
     #[cfg(feature = "defmt")]
     type Error: Debug + defmt::Format;

@@ -113,6 +113,7 @@ macro_rules! fixed_len_struct {
 ///
 /// It can either be JoinRequest, JoinAccept, or DataPayload.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum PhyPayload<T, F> {
     JoinRequest(JoinRequestPayload<T, F>),
     JoinAccept(EncryptedJoinAcceptPayload<T, F>),
@@ -134,6 +135,7 @@ impl<T: AsRef<[u8]>, F> AsRef<[u8]> for PhyPayload<T, F> {
 /// It can either be encrypted for example as a result from the [parse](fn.parse.html)
 /// function or not.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum JoinAcceptPayload<T, F> {
     Encrypted(EncryptedJoinAcceptPayload<T, F>),
     Decrypted(DecryptedJoinAcceptPayload<T, F>),
@@ -154,6 +156,7 @@ impl<T: AsRef<[u8]>, F> AsPhyPayloadBytes for JoinAcceptPayload<T, F> {
 /// It can either be encrypted for example as a result from the [parse](fn.parse.html)
 /// function or not.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum DataPayload<T, F> {
     Encrypted(EncryptedDataPayload<T, F>),
     Decrypted(DecryptedDataPayload<T>),
@@ -478,6 +481,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> DecryptedJoinAcceptPayload<
 
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
 pub enum CfList {
     DynamicChannel([Frequency; 5]),
     FixedChannel(ChannelMask<12>),
@@ -567,10 +571,7 @@ pub trait DataHeader {
 
     /// Gives the FHDR of the DataPayload.
     fn fhdr(&self) -> FHDR {
-        FHDR::new_from_raw(
-            &self.as_data_bytes()[1..(1 + self.fhdr_length())],
-            self.is_uplink(),
-        )
+        FHDR::new_from_raw(&self.as_data_bytes()[1..(1 + self.fhdr_length())], self.is_uplink())
     }
 
     /// Gives whether the frame is confirmed
@@ -886,18 +887,18 @@ where
     let bytes = data.as_ref();
     check_phy_data(bytes)?;
     match MHDR(bytes[0]).mtype() {
-        MType::JoinRequest => Ok(PhyPayload::JoinRequest(
-            JoinRequestPayload::new_with_factory(data, factory)?,
-        )),
-        MType::JoinAccept => Ok(PhyPayload::JoinAccept(
-            EncryptedJoinAcceptPayload::new_with_factory(data, factory)?,
-        )),
+        MType::JoinRequest => {
+            Ok(PhyPayload::JoinRequest(JoinRequestPayload::new_with_factory(data, factory)?))
+        }
+        MType::JoinAccept => {
+            Ok(PhyPayload::JoinAccept(EncryptedJoinAcceptPayload::new_with_factory(data, factory)?))
+        }
         MType::UnconfirmedDataUp
         | MType::ConfirmedDataUp
         | MType::UnconfirmedDataDown
-        | MType::ConfirmedDataDown => Ok(PhyPayload::Data(EncryptedDataPayload::new_with_factory(
-            data, factory,
-        )?)),
+        | MType::ConfirmedDataDown => {
+            Ok(PhyPayload::Data(EncryptedDataPayload::new_with_factory(data, factory)?))
+        }
         _ => Err(Error::UnsupportedMessageType),
     }
 }
@@ -961,6 +962,7 @@ impl From<u8> for MHDR {
 
 /// MType gives the possible message types of the PhyPayload.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum MType {
     JoinRequest,
     JoinAccept,
@@ -974,6 +976,7 @@ pub enum MType {
 
 /// Major gives the supported LoRaWAN payload formats.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum Major {
     LoRaWANR1,
     RFU,
@@ -1111,6 +1114,7 @@ impl FCtrl {
 /// FRMPayload represents the FRMPayload that can either be the application
 /// data or mac commands.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum FRMPayload<'a> {
     Data(&'a [u8]),
     MACCommands(FRMMacCommands<'a>),

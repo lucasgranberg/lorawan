@@ -19,6 +19,7 @@ pub mod mac;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
 pub enum Error<D>
 where
     D: Device,

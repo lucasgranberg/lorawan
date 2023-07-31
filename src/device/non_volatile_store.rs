@@ -1,3 +1,5 @@
+//! Storage capability supporting persistence during power-off which must be implemented by calling code.
+
 use core::fmt::Debug;
 
 pub trait NonVolatileStore {
