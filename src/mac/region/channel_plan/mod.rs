@@ -8,10 +8,15 @@ pub mod fixed;
 
 use super::{Error, Region};
 
+/// Maximum number of channels in a deployed channel plan.
 pub const MAX_CHANNELS: usize = 80;
+/// Maximum number of configurable channels in an 800 fixed list.
 pub const MAX_800_CHANNELS: usize = 40;
+/// Maximum number of configurable channels in a 900 fixed list.
 pub const MAX_900_CHANNELS: usize = 96;
+/// Number of channel blocks for a channel plan.
 pub const NUM_OF_CHANNEL_BLOCKS: usize = 10;
+/// Number of channels in a channel block.
 pub const NUM_OF_CHANNELS_IN_BLOCK: usize = 8;
 
 pub trait Channel {
