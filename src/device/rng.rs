@@ -2,6 +2,7 @@
 
 use core::fmt::Debug;
 pub trait Rng {
+    /// Possible result error.
     #[cfg(feature = "defmt")]
     type Error: Debug + defmt::Format;
 

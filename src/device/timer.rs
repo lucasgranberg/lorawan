@@ -5,6 +5,7 @@ use core::{fmt::Debug, future::Future};
 /// An asynchronous timer that allows the state machine to await
 /// between RX windows.
 pub trait Timer: Sized {
+    /// Possible result error.
     #[cfg(feature = "defmt")]
     type Error: Debug + defmt::Format;
 
@@ -12,6 +13,7 @@ pub trait Timer: Sized {
     type Error: Debug;
     fn reset(&mut self);
 
+    /// Notification of reaching a time point.
     type AtFuture<'m>: Future<Output = ()> + 'm
     where
         Self: 'm;

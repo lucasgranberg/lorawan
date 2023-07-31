@@ -6,6 +6,7 @@ use types::*;
 
 /// An asynchronous radio implementation that can transmit and receive data and sleep when unneeded.
 pub trait Radio: Sized {
+    /// Possible result error.
     #[cfg(feature = "defmt")]
     type Error: Debug + defmt::Format;
 

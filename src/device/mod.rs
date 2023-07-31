@@ -36,10 +36,15 @@ where
     }
 }
 pub trait Device {
+    /// Timer provided by the calling code.
     type Timer: Timer;
+    /// Radio provided by the calling code.
     type Radio: Radio;
+    /// Random number generator provided by calling code.
     type Rng: Rng;
+    /// Storage capability provided by calling code.
     type NonVolatileStore: NonVolatileStore;
+
     fn timer(&mut self) -> &mut Self::Timer;
     fn radio(&mut self) -> &mut Self::Radio;
     fn rng(&mut self) -> &mut Self::Rng;
