@@ -9,6 +9,7 @@ use crate::mac::types::*;
 
 use super::{Channel, ChannelPlan, MAX_CHANNELS, NUM_OF_CHANNELS_IN_BLOCK, NUM_OF_CHANNEL_BLOCKS};
 
+/// Composition of properties and functions needed to represent a fixed channel.
 #[derive(Debug, Clone, Copy)]
 pub struct FixedChannel {
     pub(crate) ul_frequency: u32,
@@ -28,6 +29,8 @@ impl Channel for FixedChannel {
         self.ul_data_rate_range
     }
 }
+
+/// Composition of properties and functions needed to control a fixed channel plan.
 pub struct FixedChannelPlan<R>
 where
     R: Region,

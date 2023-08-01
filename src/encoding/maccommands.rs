@@ -758,6 +758,8 @@ impl From<u8> for DLSettings {
 //         self.0
 //     }
 // }
+
+/// Basic frequency handling.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Frequency([u8; 3]);
 

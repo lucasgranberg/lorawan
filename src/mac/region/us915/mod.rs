@@ -5,6 +5,7 @@ use super::Error;
 use crate::device::radio::types::{Bandwidth, CodingRate, Datarate, SpreadingFactor};
 use crate::mac::types::{Frame, DR};
 
+/// Specific processing for the US915 region.
 pub struct US915;
 
 impl crate::mac::Region for US915 {

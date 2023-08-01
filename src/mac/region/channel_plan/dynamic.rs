@@ -11,6 +11,7 @@ use super::{
     NUM_OF_CHANNEL_BLOCKS,
 };
 
+/// Composition of properties and functions needed to represent a dynamic channel.
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicChannel {
     pub(crate) ul_frequency: u32,
@@ -30,6 +31,8 @@ impl Channel for DynamicChannel {
         self.ul_data_rate_range
     }
 }
+
+/// Composition of properties and functions needed to control a dynamic channel plan.
 pub struct DynamicChannelPlan<R>
 where
     R: Region,

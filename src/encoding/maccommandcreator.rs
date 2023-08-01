@@ -721,6 +721,8 @@ pub struct RXTimingSetupAnsCreator {}
 
 impl_mac_cmd_creator_boilerplate!(RXTimingSetupAnsCreator, 0x08);
 
+/// Create a request to set the maximum allowed dwell time and
+/// maximum effective isotropic radiated power (EIRP).
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TXParamSetupReqCreator {
@@ -749,11 +751,15 @@ impl TXParamSetupReqCreator {
     }
 }
 
+/// Create a response to a network server which set the maximum allowed dwell time
+/// and maximum effective isotropic radiated power (EIRP) using TXParamSetupReq.
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TXParamSetupAnsCreator;
 impl_mac_cmd_creator_boilerplate!(TXParamSetupAnsCreator, 0x09);
 
+/// Create a request to modify the definition of a downlink RX1 channel by shifting the downlink
+/// frequency from the uplink frequency.
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DlChannelReqCreator {
@@ -772,6 +778,9 @@ impl DlChannelReqCreator {
         self
     }
 }
+
+/// Create a response to a network server which modified the definition of a downlink RX1 channel
+/// by shifting the downlink frequency from the uplink frequency using DlChannelReq.
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DlChannelAnsCreator {
@@ -803,10 +812,15 @@ impl DlChannelAnsCreator {
         self
     }
 }
+
+/// Create a request to a network server for the current network time, expressesd in fractional seconds
+/// since the GPS epoch origin (January 6, 1980 00:00:00 UTC).
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceTimeReqCreator;
 impl_mac_cmd_creator_boilerplate!(DeviceTimeReqCreator, 0x0D);
+
+/// Create a response to a DeviceTimeReq request, providing the current network time,
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DeviceTimeAnsCreator {

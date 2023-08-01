@@ -7,6 +7,7 @@ pub enum Error {
     BufferFull,
 }
 
+/// Packet buffer used to send/receive data.
 #[derive(Clone)]
 pub struct RadioBuffer<const N: usize> {
     packet: [u8; N],

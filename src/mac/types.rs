@@ -16,6 +16,7 @@ impl RxWindows {
     }
 }
 
+/// Basic send/receive properties.
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Configuration {
@@ -44,6 +45,7 @@ impl Default for Configuration {
     }
 }
 
+/// Identification properties used to enable communication with a netwrk server.
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Credentials {
@@ -61,6 +63,7 @@ impl Credentials {
     }
 }
 
+/// Properties maintained during a session with a network server.
 pub struct Session {
     pub(crate) newskey: AES128,
     pub(crate) appskey: AES128,
@@ -116,6 +119,8 @@ impl Session {
     }
 }
 
+/// Basic send/receive properties persisted in non-volatile storage for
+/// continuity across power-on cycles.
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Storable {

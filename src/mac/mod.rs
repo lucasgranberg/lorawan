@@ -176,6 +176,7 @@ where
     }
 }
 
+/// Composition of properties needed to guide LoRaWAN MAC layer processing.
 pub struct Mac<R, S, C>
 where
     R: Region,
