@@ -7,6 +7,7 @@ use crate::mac::types::{Frame, DR};
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 
+/// Specific processing for the EU868 region.
 pub struct EU868;
 impl crate::mac::Region for EU868 {
     fn default_channels(_is_uplink: bool) -> usize {
