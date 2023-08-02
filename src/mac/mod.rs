@@ -70,6 +70,7 @@ where
     }
 }
 
+/// Specification of end device-specific functionality used by the MAC layer, including that provided by the caller.
 pub trait MacDevice<R, S>: Device
 where
     R: Region,

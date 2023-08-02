@@ -19,11 +19,14 @@ pub const NUM_OF_CHANNEL_BLOCKS: usize = 10;
 /// Number of channels in a channel block.
 pub const NUM_OF_CHANNELS_IN_BLOCK: usize = 8;
 
+/// Specification of basic functionality to get channel properties.
 pub trait Channel {
     fn get_ul_frequency(&self) -> u32;
     fn get_dl_frequency(&self) -> u32;
     fn get_ul_data_rate_range(&self) -> (DR, DR);
 }
+
+/// Specification of functionality to handle a channel plan for a region.
 pub trait ChannelPlan<R>
 where
     R: Region,

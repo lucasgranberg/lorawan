@@ -35,6 +35,8 @@ where
         Self::Device(value)
     }
 }
+
+/// Specification of end device-specific functionality provided by the caller.
 pub trait Device {
     /// Timer provided by the calling code.
     type Timer: Timer;
@@ -66,6 +68,7 @@ pub trait Device {
     }
 }
 
+/// Specification of end device-specific limits provided by the caller.
 pub trait DeviceSpecs {
     fn min_frequency() -> Option<u32> {
         None

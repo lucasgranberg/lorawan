@@ -2,6 +2,7 @@
 
 use core::fmt::Debug;
 
+/// Specification of the functionality required of the caller for persistence.
 pub trait NonVolatileStore {
     /// Possible result error.
     #[cfg(feature = "defmt")]

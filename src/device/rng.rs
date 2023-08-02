@@ -1,6 +1,8 @@
 //! Random number generation functionality which must be implemented by calling code.
 
 use core::fmt::Debug;
+
+/// Specification of the functionality required of the caller for random number generation.
 pub trait Rng {
     /// Possible result error.
     #[cfg(feature = "defmt")]
