@@ -31,6 +31,8 @@ where
         Self::Region(value)
     }
 }
+
+/// Specification of functionality to describe regional characteristics.
 pub trait Region {
     fn default_channels(is_uplink: bool) -> usize;
     fn channel_from_list(channel_id: usize) -> Result<DynamicChannel, Error>;

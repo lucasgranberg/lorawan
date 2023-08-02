@@ -10,6 +10,8 @@
 
 use super::Error;
 use core::convert::Infallible;
+
+/// Specification of the functionality which supports serialization of the command identifier and payload for a MAC command.
 pub trait SerializableMacCommand {
     fn payload_bytes(&self) -> &[u8];
     fn cid(&self) -> u8;
