@@ -21,12 +21,11 @@ use crate::{
         Radio,
     },
     device::{
-        non_volatile_store::NonVolatileStore,
         radio::types::{CodingRate, RxQuality},
         radio_buffer::RadioBuffer,
         rng::Rng,
         timer::Timer,
-        Device, DeviceSpecs,
+        Device,
     },
     encoding::{
         creator::{DataPayloadCreator, JoinRequestCreator},
@@ -70,158 +69,28 @@ where
     }
 }
 
-/// Specification of end device-specific functionality used by the MAC layer, including that provided by the caller.
-pub trait MacDevice<R, S>: Device
-where
-    R: Region,
-    S: DeviceSpecs,
-{
-    /// Persist information required to maintain communication with a network server through end device power cycles.
-    fn persist_to_non_volatile(
-        &mut self,
-        configuration: &Configuration,
-        credentials: &Credentials,
-    ) -> Result<(), <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error> {
-        let storable = Storable {
-            rx1_data_rate_offset: configuration.rx1_data_rate_offset,
-            rx_delay: configuration.rx_delay,
-            rx2_data_rate: configuration.rx2_data_rate,
-            rx2_frequency: configuration.rx2_frequency,
-            dev_nonce: credentials.dev_nonce,
-        };
-        if let Ok(old_storable) = self.non_volatile_store().load() {
-            if storable != old_storable {
-                trace!("overwrite {} {}", old_storable, storable);
-                self.non_volatile_store().save(storable)?;
-            } else {
-                trace!("nothing changed {}", storable);
-            }
-        } else {
-            trace!("Save fresh {}", storable);
-            self.non_volatile_store().save(storable)?;
-        }
-        Ok(())
-    }
-
-    /// Restore information required to maintain end device communication with a network server.
-    fn hydrate_from_non_volatile(
-        non_volatile_store: &mut Self::NonVolatileStore,
-        app_eui: [u8; 8],
-        dev_eui: [u8; 8],
-        app_key: [u8; 16],
-    ) -> Result<
-        (Configuration, Credentials),
-        <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error,
-    > {
-        let storable: Storable = non_volatile_store.load()?;
-        let configuration = Configuration {
-            rx1_data_rate_offset: storable.rx1_data_rate_offset,
-            rx_delay: storable.rx_delay,
-            rx2_data_rate: storable.rx2_data_rate,
-            rx2_frequency: storable.rx2_frequency,
-            ..Default::default()
-        };
-        let mut credentials = Credentials::new(app_eui, dev_eui, app_key);
-        credentials.dev_nonce = storable.dev_nonce;
-        Ok((configuration, credentials))
-    }
-
-    /// Get the maximum EIRP for the ednd device.
-    fn get_max_eirp(&self) -> u8 {
-        min(R::max_eirp(), Self::max_eirp())
-    }
-
-    /// Get the transmission power based on the frame type.
-    fn get_tx_pwr(&mut self, frame: Frame, configuration: &Configuration) -> u8 {
-        match frame {
-            Frame::Join => self.get_max_eirp(),
-            Frame::Data => configuration.tx_power.unwrap_or(self.get_max_eirp()),
-        }
-    }
-
-    /// Get the maximum uplink data rate, perhaps unique to the given end device.
-    fn max_data_rate(&self) -> DR {
-        match S::max_data_rate() {
-            Some(device_max_data_rate) => {
-                min(device_max_data_rate as u8, R::ul_data_rate_range().1 as u8).try_into().unwrap()
-            }
-            None => R::ul_data_rate_range().1,
-        }
-    }
-
-    /// Get the minumum uplink data rate, perhaps unique to the given end device.
-    fn min_data_rate(&self) -> DR {
-        match S::min_data_rate() {
-            Some(device_min_data_rate) => {
-                max(device_min_data_rate as u8, R::ul_data_rate_range().0 as u8).try_into().unwrap()
-            }
-            None => R::ul_data_rate_range().0,
-        }
-    }
-
-    /// Get the maximum frequency, perhaps unique to the given end device.
-    fn max_frequency(&self) -> u32 {
-        match S::max_frequency() {
-            Some(device_max_frequency) => min(device_max_frequency, R::max_frequency()),
-            None => R::max_frequency(),
-        }
-    }
-
-    /// Get the minimum frequency, perhaps unique to the given end device.
-    fn min_frequency(&self) -> u32 {
-        match S::min_frequency() {
-            Some(device_min_frequency) => max(device_min_frequency, R::min_frequency()),
-            None => R::min_frequency(),
-        }
-    }
-
-    /// Is the frequency within range for the given end device.
-    fn validate_frequency(&self, frequency: u32) -> bool {
-        let frequency_range = self.min_frequency()..self.max_frequency();
-        frequency_range.contains(&frequency)
-    }
-
-    /// Is the RX1 data rate offset within range for the given end device?
-    fn validate_rx1_data_rate_offset(&mut self, rx1_dr_offset: u8) -> bool {
-        (0u8..=5u8).contains(&rx1_dr_offset)
-    }
-
-    /// Is the uplink data rate within range for the given end device?
-    fn validate_data_rate(&self, dr: u8) -> bool {
-        DR::try_from(dr).unwrap().in_range((self.min_data_rate(), self.max_data_rate()))
-    }
-
-    /// Are the downlink data rate settings in range for the given end device?
-    fn validate_dl_settings(&mut self, dl_settings: DLSettings) -> (bool, bool) {
-        let rx1_data_rate_offset_ack =
-            self.validate_rx1_data_rate_offset(dl_settings.rx1_dr_offset());
-        let rx2_data_rate_ack = self.validate_data_rate(dl_settings.rx2_data_rate());
-        (rx1_data_rate_offset_ack, rx2_data_rate_ack)
-    }
-}
-
 /// Composition of properties needed to guide LoRaWAN MAC layer processing, supporting the LoRaWAN MAC API.
-pub struct Mac<R, S, C>
+pub struct Mac<R, D, C>
 where
     R: Region,
-    S: DeviceSpecs,
     C: ChannelPlan<R> + Default,
+    D: Device,
 {
     pub(crate) session: Option<Session>,
     pub(crate) channel_plan: C,
     pub(crate) region: PhantomData<R>,
-    pub(crate) device: PhantomData<S>,
+    pub(crate) device: PhantomData<D>,
     pub(crate) uplink_cmds: Vec<UplinkMacCommandCreator, 15>,
     pub(crate) ack_next: bool,
     pub(crate) configuration: Configuration,
     pub(crate) credentials: Credentials,
 }
 
-impl<R, S, C> Mac<R, S, C>
+impl<R, D, C> Mac<R, D, C>
 where
     R: region::Region,
-    S: DeviceSpecs,
     C: ChannelPlan<R> + Default,
+    D: Device,
 {
     /// Creation.
     pub fn new(configuration: Configuration, credentials: Credentials) -> Self {
@@ -234,6 +103,77 @@ where
             ack_next: false,
             configuration,
             credentials,
+        }
+    }
+
+    /// Get the minimum frequency, perhaps unique to the given end device.
+    fn min_frequency() -> u32 {
+        match <D as Device>::min_frequency() {
+            Some(device_min_frequency) => max(device_min_frequency, R::min_frequency()),
+            None => R::min_frequency(),
+        }
+    }
+    /// Get the maximum frequency, perhaps unique to the given end device.
+    fn max_frequency() -> u32 {
+        match <D as Device>::max_frequency() {
+            Some(device_max_frequency) => min(device_max_frequency, R::max_frequency()),
+            None => R::max_frequency(),
+        }
+    }
+    /// Is the frequency within range for the given end device.
+    fn validate_frequency(frequency: u32) -> bool {
+        let frequency_range = Self::min_frequency()..Self::max_frequency();
+        frequency_range.contains(&frequency)
+    }
+
+    /// Get the maximum uplink data rate, perhaps unique to the given end device.
+    fn max_data_rate() -> DR {
+        match D::max_data_rate() {
+            Some(device_max_data_rate) => {
+                min(device_max_data_rate as u8, R::ul_data_rate_range().1 as u8).try_into().unwrap()
+            }
+            None => R::ul_data_rate_range().1,
+        }
+    }
+
+    /// Get the minumum uplink data rate, perhaps unique to the given end device.
+    fn min_data_rate() -> DR {
+        match D::min_data_rate() {
+            Some(device_min_data_rate) => {
+                max(device_min_data_rate as u8, R::ul_data_rate_range().0 as u8).try_into().unwrap()
+            }
+            None => R::ul_data_rate_range().0,
+        }
+    }
+
+    /// Is the RX1 data rate offset within range for the given end device?
+    fn validate_rx1_data_rate_offset(rx1_dr_offset: u8) -> bool {
+        (0u8..=5u8).contains(&rx1_dr_offset)
+    }
+
+    /// Is the uplink data rate within range for the given end device?
+    fn validate_data_rate(dr: u8) -> bool {
+        DR::try_from(dr).unwrap().in_range((Self::min_data_rate(), Self::max_data_rate()))
+    }
+
+    /// Are the downlink data rate settings in range for the given end device?
+    fn validate_dl_settings(dl_settings: DLSettings) -> (bool, bool) {
+        let rx1_data_rate_offset_ack =
+            Self::validate_rx1_data_rate_offset(dl_settings.rx1_dr_offset());
+        let rx2_data_rate_ack = Self::validate_data_rate(dl_settings.rx2_data_rate());
+        (rx1_data_rate_offset_ack, rx2_data_rate_ack)
+    }
+
+    /// Get the maximum EIRP for the ednd device.
+    fn max_eirp() -> u8 {
+        min(R::max_eirp(), D::max_eirp())
+    }
+
+    /// Get the transmission power based on the frame type.
+    fn get_tx_pwr(frame: Frame, configuration: &Configuration) -> u8 {
+        match frame {
+            Frame::Join => Self::max_eirp(),
+            Frame::Data => configuration.tx_power.unwrap_or(Self::max_eirp()),
         }
     }
 
@@ -312,17 +252,13 @@ where
         }
     }
 
-    fn create_tx_config<D>(
+    fn create_tx_config(
         &self,
-        device: &mut D,
         frame: Frame,
         channel: &C::Channel,
         dr: DR,
-    ) -> Result<TxConfig, crate::Error<D>>
-    where
-        D: MacDevice<R, S>,
-    {
-        let pw = device.get_tx_pwr(frame, &self.configuration);
+    ) -> Result<TxConfig, crate::Error<D>> {
+        let pw = Self::get_tx_pwr(frame, &self.configuration);
         let data_rate = R::convert_data_rate(dr)?;
         let tx_config = TxConfig {
             pw,
@@ -335,7 +271,7 @@ where
         Ok(tx_config)
     }
 
-    fn create_rf_config<D>(
+    fn create_rf_config(
         &self,
         frame: &Frame,
         window: &Window,
@@ -343,7 +279,7 @@ where
         channel: &C::Channel,
     ) -> Result<RfConfig, crate::Error<D>>
     where
-        D: MacDevice<R, S>,
+        D: Device,
     {
         let data_rate = match window {
             Window::_1 => self.rx1_data_rate(data_rate),
@@ -375,14 +311,14 @@ where
         Ok(rf_config)
     }
 
-    fn handle_downlink_macs<D>(
+    fn handle_downlink_macs(
         &mut self,
         device: &mut D,
         rx_quality: RxQuality,
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'_>>,
     ) -> Result<(), crate::Error<D>>
     where
-        D: MacDevice<R, S>,
+        D: Device,
     {
         let mut channel_mask = self.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
@@ -460,7 +396,7 @@ where
                 DownlinkMacCommand::RXParamSetupReq(payload) => {
                     let mut ans = RXParamSetupAnsCreator::new();
                     let (mut rx1_data_rate_offset_ack, mut rx2_data_rate_ack) =
-                        device.validate_dl_settings(payload.dl_settings());
+                        Self::validate_dl_settings(payload.dl_settings());
                     let channel_ack =
                         self.channel_plan.validate_frequency(payload.frequency().value()).is_ok();
                     if channel_ack && rx1_data_rate_offset_ack && rx2_data_rate_ack {
@@ -488,14 +424,16 @@ where
                     if (payload.channel_index() as usize) < R::default_channels(true) {
                         None //silently ignore if default channel
                     } else {
-                        let data_rate_range_ack = device
-                            .validate_data_rate(payload.data_rate_range().min_data_rate())
-                            && device.validate_data_rate(payload.data_rate_range().max_data_rate())
-                            && payload.data_rate_range().min_data_rate()
-                                < payload.data_rate_range().max_data_rate();
+                        let data_rate_range_ack =
+                            Self::validate_data_rate(payload.data_rate_range().min_data_rate())
+                                && Self::validate_data_rate(
+                                    payload.data_rate_range().max_data_rate(),
+                                )
+                                && payload.data_rate_range().min_data_rate()
+                                    < payload.data_rate_range().max_data_rate();
 
                         let channel_frequency_ack = payload.frequency().value() == 0
-                            || device.validate_frequency(payload.frequency().value());
+                            || Self::validate_frequency(payload.frequency().value());
 
                         let mut ans = NewChannelAnsCreator::new();
                         ans.set_channel_frequency_ack(channel_frequency_ack);
@@ -512,7 +450,7 @@ where
                 DownlinkMacCommand::DlChannelReq(payload) => {
                     let mut ans = DlChannelAnsCreator::new();
                     let mut channel_frequency_ack =
-                        device.validate_frequency(payload.frequency().value());
+                        Self::validate_frequency(payload.frequency().value());
                     //let mut uplink_frequency_exists_ack = false;
                     let uplink_frequency_exists_ack = self
                         .channel_plan
@@ -552,7 +490,7 @@ where
         Ok(())
     }
 
-    async fn rx_with_timeout<'m, D>(
+    async fn rx_with_timeout<'m>(
         &self,
         frame: Frame,
         device: &mut D,
@@ -561,7 +499,7 @@ where
         channel: &C::Channel,
     ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>>
     where
-        D: MacDevice<R, S>,
+        D: Device,
     {
         let windows = self.get_rx_windows(frame);
 
@@ -602,7 +540,7 @@ where
         }
     }
 
-    fn prepare_buffer<D>(
+    fn prepare_buffer(
         &mut self,
         data: &[u8],
         fport: u8,
@@ -611,7 +549,7 @@ where
         device: &D,
     ) -> Result<u32, crate::Error<D>>
     where
-        D: MacDevice<R, S>,
+        D: Device,
     {
         if let Some(session) = &self.session {
             // check if FCnt is used up
@@ -654,14 +592,14 @@ where
         }
     }
 
-    async fn send_buffer<D>(
+    async fn send_buffer(
         &self,
         device: &mut D,
         radio_buffer: &mut RadioBuffer<256>,
         frame: Frame,
     ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>>
     where
-        D: MacDevice<R, S>,
+        D: Device,
     {
         let tx_buffer = radio_buffer.clone();
 
@@ -682,7 +620,7 @@ where
                         frame,
                         chn.get_ul_frequency(),
                     );
-                    let tx_config = self.create_tx_config(device, frame, &chn, tx_data_rate)?;
+                    let tx_config = self.create_tx_config(frame, &chn, tx_data_rate)?;
                     trace!("tx config {:?}", tx_config);
                     let _ms = device
                         .radio()
@@ -717,13 +655,13 @@ where
     }
 
     /// Establish a session between the end device and a network server.
-    pub async fn join<'m, D>(
+    pub async fn join<'m>(
         &'m mut self,
         device: &'m mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
     ) -> Result<(), crate::Error<D>>
     where
-        D: MacDevice<R, S>,
+        D: Device,
     {
         self.credentials.incr_dev_nonce();
         device
@@ -754,7 +692,7 @@ where
                         self.session.replace(session);
 
                         let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
-                            device.validate_dl_settings(decrypt.dl_settings());
+                            Self::validate_dl_settings(decrypt.dl_settings());
                         trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
                         if rx1_data_rate_offset_ack && rx2_data_rate_ack {
                             self.handle_dl_settings(decrypt.dl_settings())?
@@ -784,7 +722,7 @@ where
     }
 
     /// Send data from the end device to a network server on an established session.
-    pub async fn send<D>(
+    pub async fn send(
         &mut self,
         device: &mut D,
         radio_buffer: &mut RadioBuffer<256>,
@@ -794,7 +732,7 @@ where
         rx: Option<&mut [u8]>,
     ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>>
     where
-        D: MacDevice<R, S>,
+        D: Device,
     {
         if let Some(ref mut session_data) = self.session {
             if !session_data.is_expired() {
