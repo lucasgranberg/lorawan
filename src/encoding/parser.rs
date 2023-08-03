@@ -53,6 +53,7 @@ macro_rules! fixed_len_struct {
                 $type(bytes)
             }
 
+            /// Creation.
             pub fn new(data: T) -> Option<$type<T>> {
                 let bytes = data.as_ref();
                 if bytes.len() != $size {
@@ -91,6 +92,7 @@ macro_rules! fixed_len_struct {
         }
 
         impl<T: AsRef<[u8]>> $type<T> {
+            /// Obtain ownership of the resulting type.
             #[inline]
             pub fn to_owned(&self) -> $type<[u8; $size]> {
                 let mut data = [0 as u8; $size];
@@ -175,6 +177,7 @@ impl<T: AsRef<[u8]>, F> DataHeader for DataPayload<T, F> {
 /// that just happen to have AsRef and those that want to have the given implementations (like
 /// MICAble and MHDRAble).
 pub trait AsPhyPayloadBytes {
+    /// Convert to a u8 array reference.
     fn as_bytes(&self) -> &[u8];
 }
 
@@ -359,6 +362,7 @@ impl<T: AsRef<[u8]>, F> AsPhyPayloadBytes for DecryptedJoinAcceptPayload<T, F> {
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> DecryptedJoinAcceptPayload<T, F> {
+    /// Creation.
     pub fn new_from_encrypted(encrypted: EncryptedJoinAcceptPayload<T, F>, key: &AES128) -> Self {
         let EncryptedJoinAcceptPayload(mut bytes, factory) = encrypted;
         let len = bytes.as_ref().len();
@@ -376,6 +380,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory> DecryptedJoinAcceptPayload<
         self.mic() == self.calculate_mic(key)
     }
 
+    /// Calculate the MIC using the key.
     pub fn calculate_mic(&self, key: &AES128) -> MIC {
         let d = self.0.as_ref();
         securityhelpers::calculate_mic(&d[..d.len() - 4], self.1.new_mac(key))
@@ -767,6 +772,7 @@ impl<T: AsRef<[u8]>> DataHeader for DecryptedDataPayload<T> {
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>> DecryptedDataPayload<T> {
+    /// Creation.
     pub fn new_from_encrypted<'a, F: CryptoFactory>(
         encrypted: EncryptedDataPayload<T, F>,
         nwk_skey: Option<&'a AES128>,
@@ -801,6 +807,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> DecryptedDataPayload<T> {
 
         Ok(DecryptedDataPayload(data))
     }
+
     /// Returns FRMPayload that can represent either application payload or mac commands if fport
     /// is 0.
     pub fn frm_payload(&self) -> Result<FRMPayload, Error> {
@@ -926,6 +933,7 @@ fn check_phy_data(bytes: &[u8]) -> Result<(), Error> {
 pub struct MHDR(u8);
 
 impl MHDR {
+    /// Creation.
     pub fn new(byte: u8) -> MHDR {
         MHDR(byte)
     }
@@ -1004,9 +1012,12 @@ fixed_len_struct! {
 
 #[allow(clippy::should_implement_trait)]
 impl<T: AsRef<[u8]>> DevAddr<T> {
+    /// Get the network ID.
     pub fn nwk_id(&self) -> u8 {
         self.0.as_ref()[0] >> 1
     }
+
+    /// Get a reference to the u8 array representation of a DevAddr.
     pub fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
@@ -1023,10 +1034,12 @@ fixed_len_struct! {
 pub struct FHDR<'a>(pub(crate) &'a [u8], pub(crate) bool);
 
 impl<'a> FHDR<'a> {
+    /// Creation.
     pub fn new_from_raw(bytes: &'a [u8], uplink: bool) -> FHDR {
         FHDR(bytes, uplink)
     }
 
+    /// Creation.
     pub fn new(bytes: &'a [u8], uplink: bool) -> Option<FHDR> {
         let data_len = bytes.len();
         if data_len < 7 {
@@ -1053,6 +1066,7 @@ impl<'a> FHDR<'a> {
         (u16::from(self.0[6]) << 8) | u16::from(self.0[5])
     }
 
+    /// Gives the size of FOpts.
     pub fn fopts_len(&self) -> u8 {
         FCtrl(self.0[4], self.1).f_opts_len()
     }
@@ -1064,18 +1078,22 @@ impl<'a> FHDR<'a> {
 pub struct FCtrl(pub u8, pub bool);
 
 impl FCtrl {
+    /// Set the acknowledgement bit.
     pub fn set_ack(&mut self) {
         self.0 |= 0b1 << 5;
     }
 
+    /// Set ADR ACK requested.
     pub fn set_adr_ack_req(&mut self) {
         self.0 |= 0b1 << 6;
     }
 
+    /// Set ADR enabled.
     pub fn set_adr(&mut self) {
         self.0 |= 0b1 << 7;
     }
 
+    /// Creation.
     pub fn new(bytes: u8, uplink: bool) -> FCtrl {
         FCtrl(bytes, uplink)
     }
@@ -1126,6 +1144,7 @@ pub enum FRMPayload<'a> {
 pub struct FRMMacCommands<'a>(pub(crate) bool, pub(crate) &'a [u8]);
 
 impl<'a> FRMMacCommands<'a> {
+    /// Creation.
     pub fn new(bytes: &'a [u8], uplink: bool) -> Self {
         FRMMacCommands(uplink, bytes)
     }

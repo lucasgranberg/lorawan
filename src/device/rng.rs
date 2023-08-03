@@ -11,5 +11,6 @@ pub trait Rng {
     #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
+    /// Get the next random number.
     fn next_u32(&mut self) -> Result<u32, Self::Error>;
 }

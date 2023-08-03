@@ -46,6 +46,7 @@ impl<R> DynamicChannelPlan<R>
 where
     R: Region,
 {
+    /// Use a channel ID to obtain a channel from the 800 channel list.
     pub fn get_800_channel(id: usize) -> Result<DynamicChannel, Error> {
         match id {
             0..=34 => {
@@ -85,6 +86,7 @@ where
         }
     }
 
+    /// Use a channel ID to obtain a channel from the 900 channel list.
     pub fn get_900_channel(id: usize) -> Result<DynamicChannel, Error> {
         if id >= MAX_900_CHANNELS {
             return Err(Error::InvalidChannelIndex);

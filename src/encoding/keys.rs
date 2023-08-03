@@ -35,18 +35,23 @@ impl From<[u8; 4]> for MIC {
 
 /// Trait for implementations of AES128 encryption.
 pub trait Encrypter {
+    /// Encrypt a data block.
     fn encrypt_block(&self, block: &mut GenericArray<u8, U16>);
 }
 
 /// Trait for implementations of AES128 decryption.
 pub trait Decrypter {
+    /// Decrypt a data block.
     fn decrypt_block(&self, block: &mut GenericArray<u8, U16>);
 }
 
-/// Trait for implementations of CMAC.
+/// Trait for implementations of cipher-based message authentication code (CMAC).
 pub trait Cmac {
+    /// Update the data to be processed.
     fn input(&mut self, data: &[u8]);
+    /// Clear the data to be processed.
     fn reset(&mut self);
+    /// Process the data.
     fn result(self) -> GenericArray<u8, U16>;
 }
 

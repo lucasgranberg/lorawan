@@ -76,6 +76,7 @@ where
     R: Region,
     S: DeviceSpecs,
 {
+    /// Persist information required to maintain communication with a network server through end device power cycles.
     fn persist_to_non_volatile(
         &mut self,
         configuration: &Configuration,
@@ -101,6 +102,8 @@ where
         }
         Ok(())
     }
+
+    /// Restore information required to maintain end device communication with a network server.
     fn hydrate_from_non_volatile(
         non_volatile_store: &mut Self::NonVolatileStore,
         app_eui: [u8; 8],
@@ -122,15 +125,21 @@ where
         credentials.dev_nonce = storable.dev_nonce;
         Ok((configuration, credentials))
     }
+
+    /// Get the maximum EIRP for the ednd device.
     fn get_max_eirp(&self) -> u8 {
         min(R::max_eirp(), Self::max_eirp())
     }
+
+    /// Get the transmission power based on the frame type.
     fn get_tx_pwr(&mut self, frame: Frame, configuration: &Configuration) -> u8 {
         match frame {
             Frame::Join => self.get_max_eirp(),
             Frame::Data => configuration.tx_power.unwrap_or(self.get_max_eirp()),
         }
     }
+
+    /// Get the maximum uplink data rate, perhaps unique to the given end device.
     fn max_data_rate(&self) -> DR {
         match S::max_data_rate() {
             Some(device_max_data_rate) => {
@@ -139,6 +148,8 @@ where
             None => R::ul_data_rate_range().1,
         }
     }
+
+    /// Get the minumum uplink data rate, perhaps unique to the given end device.
     fn min_data_rate(&self) -> DR {
         match S::min_data_rate() {
             Some(device_min_data_rate) => {
@@ -147,28 +158,40 @@ where
             None => R::ul_data_rate_range().0,
         }
     }
+
+    /// Get the maximum frequency, perhaps unique to the given end device.
     fn max_frequency(&self) -> u32 {
         match S::max_frequency() {
             Some(device_max_frequency) => min(device_max_frequency, R::max_frequency()),
             None => R::max_frequency(),
         }
     }
+
+    /// Get the minimum frequency, perhaps unique to the given end device.
     fn min_frequency(&self) -> u32 {
         match S::min_frequency() {
             Some(device_min_frequency) => max(device_min_frequency, R::min_frequency()),
             None => R::min_frequency(),
         }
     }
+
+    /// Is the frequency within range for the given end device.
     fn validate_frequency(&self, frequency: u32) -> bool {
         let frequency_range = self.min_frequency()..self.max_frequency();
         frequency_range.contains(&frequency)
     }
+
+    /// Is the RX1 data rate offset within range for the given end device?
     fn validate_rx1_data_rate_offset(&mut self, rx1_dr_offset: u8) -> bool {
         (0u8..=5u8).contains(&rx1_dr_offset)
     }
+
+    /// Is the uplink data rate within range for the given end device?
     fn validate_data_rate(&self, dr: u8) -> bool {
         DR::try_from(dr).unwrap().in_range((self.min_data_rate(), self.max_data_rate()))
     }
+
+    /// Are the downlink data rate settings in range for the given end device?
     fn validate_dl_settings(&mut self, dl_settings: DLSettings) -> (bool, bool) {
         let rx1_data_rate_offset_ack =
             self.validate_rx1_data_rate_offset(dl_settings.rx1_dr_offset());
@@ -177,7 +200,7 @@ where
     }
 }
 
-/// Composition of properties needed to guide LoRaWAN MAC layer processing.
+/// Composition of properties needed to guide LoRaWAN MAC layer processing, supporting the LoRaWAN MAC API.
 pub struct Mac<R, S, C>
 where
     R: Region,
@@ -200,6 +223,7 @@ where
     S: DeviceSpecs,
     C: ChannelPlan<R> + Default,
 {
+    /// Creation.
     pub fn new(configuration: Configuration, credentials: Credentials) -> Self {
         Self {
             session: None,
@@ -212,6 +236,8 @@ where
             credentials,
         }
     }
+
+    /// Has a session been established bteween the end device and a network server?
     pub fn is_joined(&self) -> bool {
         if let Some(session) = &self.session {
             !session.is_expired()
@@ -219,6 +245,7 @@ where
             false
         }
     }
+
     fn handle_dl_settings(&mut self, dl_settings: DLSettings) -> Result<(), crate::mac::Error> {
         self.configuration.rx1_data_rate_offset = Some(dl_settings.rx1_dr_offset());
         let rx2_data_rate: DR = dl_settings
@@ -228,16 +255,20 @@ where
         self.configuration.rx2_data_rate = Some(rx2_data_rate);
         Ok(())
     }
+
     fn tx_data_rate(&self) -> DR {
         self.configuration.tx_data_rate.unwrap_or(R::default_data_rate())
     }
+
     fn rx1_data_rate_offset(&self) -> u8 {
         self.configuration.rx1_data_rate_offset.unwrap_or(R::default_rx1_data_rate_offset())
     }
+
     fn rx1_data_rate(&self, tx_dr: DR) -> DR {
         let offset = self.rx1_data_rate_offset();
         R::get_rx1_dr(tx_dr, offset).unwrap_or(R::default_data_rate())
     }
+
     fn rx2_data_rate(&self, frame: &Frame) -> DR {
         match frame {
             Frame::Join => R::default_rx2_data_rate(),
@@ -280,6 +311,7 @@ where
             }
         }
     }
+
     fn create_tx_config<D>(
         &self,
         device: &mut D,
@@ -302,6 +334,7 @@ where
         };
         Ok(tx_config)
     }
+
     fn create_rf_config<D>(
         &self,
         frame: &Frame,
@@ -341,6 +374,7 @@ where
         };
         Ok(rf_config)
     }
+
     fn handle_downlink_macs<D>(
         &mut self,
         device: &mut D,
@@ -619,6 +653,7 @@ where
             Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined))
         }
     }
+
     async fn send_buffer<D>(
         &self,
         device: &mut D,
@@ -680,6 +715,8 @@ where
         }
         Ok(None)
     }
+
+    /// Establish a session between the end device and a network server.
     pub async fn join<'m, D>(
         &'m mut self,
         device: &'m mut D,
@@ -745,6 +782,8 @@ where
             Err(crate::Error::Mac(crate::mac::Error::NoResponse))
         }
     }
+
+    /// Send data from the end device to a network server on an established session.
     pub async fn send<D>(
         &mut self,
         device: &mut D,

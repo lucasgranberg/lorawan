@@ -11,10 +11,11 @@ pub trait NonVolatileStore {
     #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
+    /// Persist data which can be converted to a u8 array.
     fn save<'a, T>(&mut self, item: T) -> Result<(), Self::Error>
     where
         T: Sized + Into<&'a [u8]>;
-
+    /// Retrieve data from persistence which can be converted from a u8 array.
     fn load<'a, T>(&'a mut self) -> Result<T, Self::Error>
     where
         T: Sized + TryFrom<&'a [u8]>;

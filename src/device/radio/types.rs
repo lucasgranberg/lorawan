@@ -113,13 +113,17 @@ pub struct RxQuality {
 }
 
 impl RxQuality {
+    /// Creation.
     pub fn new(rssi: i16, snr: i8) -> RxQuality {
         RxQuality { rssi, snr }
     }
 
+    /// Get the RSSI property.
     pub fn rssi(self) -> i16 {
         self.rssi
     }
+
+    /// Get the SNR property.
     pub fn snr(self) -> i8 {
         self.snr
     }

@@ -45,7 +45,7 @@ impl Default for Configuration {
     }
 }
 
-/// Identification properties used to enable communication with a netwrk server.
+/// Identification properties used to enable communication with a network server.
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Credentials {
@@ -55,9 +55,12 @@ pub struct Credentials {
     pub(crate) dev_nonce: u16,
 }
 impl Credentials {
+    /// Creation.
     pub fn new(app_eui: [u8; 8], dev_eui: [u8; 8], app_key: [u8; 16]) -> Self {
         Self { app_eui, dev_eui, app_key: AES128(app_key), dev_nonce: 0 }
     }
+
+    /// Increment the nonce associated with a join request.
     pub fn incr_dev_nonce(&mut self) {
         self.dev_nonce += 1;
     }
@@ -72,6 +75,7 @@ pub struct Session {
     pub(crate) fcnt_down: u32,
 }
 impl Session {
+    /// Creation.
     pub fn derive_new<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory>(
         decrypt: &DecryptedJoinAcceptPayload<T, F>,
         devnonce: DevNonce<[u8; 2]>,
@@ -90,30 +94,37 @@ impl Session {
         )
     }
 
+    /// Creation.
     pub fn new(newskey: AES128, appskey: AES128, devaddr: DevAddr<[u8; 4]>) -> Self {
         Self { newskey, appskey, devaddr, fcnt_up: 0, fcnt_down: 0 }
     }
 
+    /// Get the network session key.
     pub fn newskey(&self) -> &AES128 {
         &self.newskey
     }
 
+    /// Get the application session key.
     pub fn appskey(&self) -> &AES128 {
         &self.appskey
     }
 
+    /// Get the device address.
     pub fn devaddr(&self) -> &DevAddr<[u8; 4]> {
         &self.devaddr
     }
 
+    /// Get the uplink frame count.
     pub fn fcnt_up(&self) -> u32 {
         self.fcnt_up
     }
 
+    /// Increment the uplink frame count.
     pub fn fcnt_up_increment(&mut self) {
         self.fcnt_up += 1;
     }
 
+    /// Has the uplink frame count reached or exceeded the limit?
     pub fn is_expired(&self) -> bool {
         self.fcnt_up() >= 0xFFFF
     }
@@ -178,6 +189,7 @@ pub enum DR {
 }
 
 impl DR {
+    /// Is this DR within range?
     pub fn in_range(&self, range: (DR, DR)) -> bool {
         (range.0 as u8 <= *self as u8) && (*self as u8 <= range.1 as u8)
     }

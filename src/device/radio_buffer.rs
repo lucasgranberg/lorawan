@@ -20,14 +20,17 @@ impl<const N: usize> Default for RadioBuffer<N> {
 }
 
 impl<const N: usize> RadioBuffer<N> {
+    /// Creation.
     pub fn new() -> Self {
         Self { packet: [0; N], pos: 0 }
     }
 
+    /// Mark as empty.
     pub fn clear(&mut self) {
         self.pos = 0;
     }
 
+    /// Add data as long as it fits within the buffer.
     pub fn extend_from_slice(&mut self, buf: &[u8]) -> Result<(), Error> {
         if self.pos + buf.len() < self.packet.len() {
             self.packet[self.pos..self.pos + buf.len()].copy_from_slice(buf);
@@ -38,10 +41,12 @@ impl<const N: usize> RadioBuffer<N> {
         }
     }
 
+    /// Provide the mutable buffer without regard to contained data.
     pub fn as_raw_slice(&mut self) -> &mut [u8] {
         &mut self.packet
     }
 
+    /// Update the start position for subsequent data additions.
     pub fn inc(&mut self, len: usize) {
         assert!(self.pos + len < self.packet.len());
         self.pos += len;
