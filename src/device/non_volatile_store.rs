@@ -2,6 +2,8 @@
 
 use core::fmt::Debug;
 
+use crate::mac::types::Storable;
+
 /// Specification of the functionality required of the caller for persistence.
 pub trait NonVolatileStore {
     /// Possible result error.
@@ -12,11 +14,7 @@ pub trait NonVolatileStore {
     type Error: Debug;
 
     /// Persist data which can be converted to a u8 array.
-    fn save<'a, T>(&mut self, item: T) -> Result<(), Self::Error>
-    where
-        T: Sized + Into<&'a [u8]>;
+    fn save(&mut self, storable: Storable) -> Result<(), Self::Error>;
     /// Retrieve data from persistence which can be converted from a u8 array.
-    fn load<'a, T>(&'a mut self) -> Result<T, Self::Error>
-    where
-        T: Sized + TryFrom<&'a [u8]>;
+    fn load(&mut self) -> Result<Storable, Self::Error>;
 }

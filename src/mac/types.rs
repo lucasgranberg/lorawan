@@ -134,39 +134,19 @@ impl Session {
 /// continuity across power-on cycles.
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[allow(missing_docs)]
 pub struct Storable {
-    pub(crate) rx1_data_rate_offset: Option<u8>,
-    pub(crate) rx_delay: Option<u8>,
-    pub(crate) rx2_data_rate: Option<DR>,
-    pub(crate) rx2_frequency: Option<u32>,
-    pub(crate) dev_nonce: u16,
-}
-impl TryFrom<&[u8]> for Storable {
-    type Error = ();
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.len() != ::core::mem::size_of::<Self>() || bytes[0] == 0xff {
-            Err(())
-        } else {
-            let mut buf: [u8; ::core::mem::size_of::<Self>()] = [0; ::core::mem::size_of::<Self>()];
-            buf.copy_from_slice(bytes);
-            Ok(unsafe { core::mem::transmute::<[u8; ::core::mem::size_of::<Self>()], Self>(buf) })
-        }
-    }
-}
-impl From<Storable> for &[u8] {
-    fn from(storable: Storable) -> Self {
-        unsafe {
-            ::core::slice::from_raw_parts(
-                (&storable as *const Storable) as *const u8,
-                ::core::mem::size_of::<Storable>(),
-            )
-        }
-    }
+    pub rx1_data_rate_offset: Option<u8>,
+    pub rx_delay: Option<u8>,
+    pub rx2_data_rate: Option<DR>,
+    pub rx2_frequency: Option<u32>,
+    pub dev_nonce: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[allow(missing_docs)]
 #[repr(u8)]
 pub enum DR {
