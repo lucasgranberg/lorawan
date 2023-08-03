@@ -277,10 +277,7 @@ where
         window: &Window,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> Result<RfConfig, crate::Error<D>>
-    where
-        D: Device,
-    {
+    ) -> Result<RfConfig, crate::Error<D>> {
         let data_rate = match window {
             Window::_1 => self.rx1_data_rate(data_rate),
             Window::_2 => self.rx2_data_rate(frame),
@@ -497,10 +494,7 @@ where
         radio_buffer: &'m mut RadioBuffer<256>,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>>
-    where
-        D: Device,
-    {
+    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
         let windows = self.get_rx_windows(frame);
 
         let open_rx1_fut = device
@@ -597,10 +591,7 @@ where
         device: &mut D,
         radio_buffer: &mut RadioBuffer<256>,
         frame: Frame,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>>
-    where
-        D: Device,
-    {
+    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
         let tx_buffer = radio_buffer.clone();
 
         for _ in 0..self.configuration.number_of_transmissions {
@@ -730,10 +721,7 @@ where
         fport: u8,
         confirmed: bool,
         rx: Option<&mut [u8]>,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>>
-    where
-        D: Device,
-    {
+    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
         if let Some(ref mut session_data) = self.session {
             if !session_data.is_expired() {
                 session_data.fcnt_up_increment();
