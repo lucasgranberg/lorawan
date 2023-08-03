@@ -13,8 +13,8 @@ pub trait NonVolatileStore {
     #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
-    /// Persist data which can be converted to a u8 array.
+    /// Save storable to persistent store.
     fn save(&mut self, storable: Storable) -> Result<(), Self::Error>;
-    /// Retrieve data from persistence which can be converted from a u8 array.
+    /// Load storable from peristent store.
     fn load(&mut self) -> Result<Storable, Self::Error>;
 }
