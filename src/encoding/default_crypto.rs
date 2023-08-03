@@ -21,6 +21,7 @@ use super::parser::{
 };
 use super::Error;
 
+/// Cipher-based message authentication code (CMAC) processor.
 pub type Cmac = cmac::Cmac<Aes128>;
 
 /// Provides a default implementation for build object for using the crypto functions.

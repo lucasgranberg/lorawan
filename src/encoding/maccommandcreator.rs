@@ -30,6 +30,7 @@ macro_rules! mac_cmds_creator_enum {
         }
         #[allow(clippy::len_without_is_empty)]
         impl$(<$outer_lifetime>)* $outer_type$(<$outer_lifetime>)* {
+            /// Get the length.
             pub fn len(&self) -> usize {
                 match self {
                     $(
@@ -37,6 +38,7 @@ macro_rules! mac_cmds_creator_enum {
                     )*
                 }
             }
+            /// Build.
             pub fn build(&self) -> &[u8] {
                 match *self {
                     $(
@@ -85,10 +87,12 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
                 &[$cid]
             }
 
+            /// Get the CID.
             pub const fn cid(&self) -> u8 {
                 $cid
             }
 
+            /// Get the length.
             pub const fn len(&self) -> usize {
                 1
             }
@@ -118,10 +122,12 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
                 &self.data[..]
             }
 
+            /// Get the CID.
             pub const fn cid(&self) -> u8 {
                 $cid
             }
 
+            /// Get the length.
             pub const fn len(&self) -> usize {
                 $len
             }
@@ -134,17 +140,17 @@ macro_rules! impl_mac_cmd_creator_boilerplate {
 macro_rules! impl_mac_cmd_payload {
     ($type:ident) => {
         impl SerializableMacCommand for $type {
-            /// Bytes of the SerializableMacCommand without the cid.
+            /// Bytes of the SerializableMacCommand without the CID.
             fn payload_bytes(&self) -> &[u8] {
                 &self.build()[1..]
             }
 
-            /// The cid of the SerializableMacCommand.
+            /// The CID of the SerializableMacCommand.
             fn cid(&self) -> u8 {
                 self.build()[0]
             }
 
-            /// Length of the SerializableMacCommand without the cid.
+            /// Length of the SerializableMacCommand without the CID.
             fn payload_len(&self) -> usize {
                 self.build().len() - 1
             }
@@ -730,16 +736,21 @@ pub struct TXParamSetupReqCreator {
 }
 impl_mac_cmd_creator_boilerplate!(TXParamSetupReqCreator, 0x09, 2);
 impl TXParamSetupReqCreator {
+    /// Set the downlink dwell time.
     pub fn set_downlink_dwell_time(&mut self) -> &mut Self {
         self.data[1] &= 0xfe;
         self.data[1] |= (1 << 5) as u8;
         self
     }
+
+    /// Set the uplink dwell time.
     pub fn set_uplink_dwell_time(&mut self) -> &mut Self {
         self.data[1] &= 0xfe;
         self.data[1] |= (1 << 4) as u8;
         self
     }
+
+    /// Set the maximum EIRP.
     pub fn set_max_eirp(&mut self, max_eirp: u8) -> Result<&mut Self, Error> {
         if max_eirp > 0x0F {
             return Err(Error::OutOfRange);
@@ -767,10 +778,13 @@ pub struct DlChannelReqCreator {
 }
 impl_mac_cmd_creator_boilerplate!(DlChannelReqCreator, 0x0A, 5);
 impl DlChannelReqCreator {
+    /// Set the channel index.
     pub fn set_channel_index(&mut self, index: u8) -> &mut Self {
         self.data[1] = index;
         self
     }
+
+    /// Set the downlink frequency for the channel.
     pub fn set_frequency<T: Into<Frequency>>(&mut self, frequency: T) -> &mut Self {
         let converted = frequency.into();
         self.data[2..5].copy_from_slice(converted.as_ref());
@@ -828,10 +842,13 @@ pub struct DeviceTimeAnsCreator {
 }
 impl_mac_cmd_creator_boilerplate!(DeviceTimeAnsCreator, 0x0D, 6);
 impl DeviceTimeAnsCreator {
+    /// Set the seconds part of the network time.
     pub fn set_seconds(&mut self, seconds: u32) -> &mut Self {
         self.data[1..5].copy_from_slice(&seconds.to_le_bytes());
         self
     }
+
+    /// Set the fractional seconds part of the network time.
     pub fn set_nano_seconds(&mut self, nano_seconds: u32) -> Result<&mut Self, Error> {
         if nano_seconds > 1000000000 {
             return Err(Error::OutOfRange);
@@ -841,6 +858,7 @@ impl DeviceTimeAnsCreator {
     }
 }
 
+/// Build one or more MAC commands.
 pub fn build_mac_commands<T: AsMut<[u8]>>(
     cmds: &[&dyn SerializableMacCommand],
     mut out: T,

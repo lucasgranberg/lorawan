@@ -13,8 +13,11 @@ use core::convert::Infallible;
 
 /// Specification of the functionality which supports serialization of the command identifier and payload for a MAC command.
 pub trait SerializableMacCommand {
+    /// Bytes of the SerializableMacCommand without the CID.
     fn payload_bytes(&self) -> &[u8];
+    /// The CID of the SerializableMacCommand.
     fn cid(&self) -> u8;
+    /// Length of the SerializableMacCommand without the CID.
     fn payload_len(&self) -> usize;
 }
 
@@ -36,22 +39,27 @@ macro_rules! mac_cmd_zero_len {
             pub struct $type();
 
             impl $type {
+                /// Creation.
                 pub fn new(_: &[u8]) -> Result<$type, Infallible> {
                     Ok($type())
                 }
 
+                /// Get the CID.
                 pub const fn cid() -> u8 {
                     $cid
                 }
 
+                /// Sent by end device or sent by network server.
                 pub const fn uplink() -> bool {
                     $uplink
                 }
 
-                /// length of payload without cid
+                /// Length of the empty payload.
                 pub const fn len() -> usize {
                     0
                 }
+
+                /// Reference to the empty payload.
                 pub fn bytes (&self) -> &[u8]{
                     &[]
                 }
@@ -82,7 +90,7 @@ macro_rules! mac_cmds {
                     }
                 }
 
-                /// Command identifier.
+                /// Get the CID.
                 pub const fn cid() -> u8 {
                     $cid
                 }
@@ -92,11 +100,12 @@ macro_rules! mac_cmds {
                     $uplink
                 }
 
-                /// length of payload without cid
+                /// Length of payload without the CID.
                 pub const fn len() -> usize {
                     $size
                 }
 
+                /// Reference to the payload.
                 pub fn bytes (&self) -> &[u8]{
                     self.0
                 }
@@ -122,6 +131,7 @@ macro_rules! mac_cmds_enum {
             )*
         }
         impl$(<$outer_lifetime>)* $outer_type$(<$outer_lifetime>)* {
+            /// Get the length.
             pub fn len(&self) -> usize {
                 match *self {
                     $(
@@ -129,6 +139,8 @@ macro_rules! mac_cmds_enum {
                     )*
                 }
             }
+
+            /// Sent by end device or sent by network server.
             pub fn uplink(&self) -> bool {
                 match *self {
                     $(
@@ -136,6 +148,8 @@ macro_rules! mac_cmds_enum {
                     )*
                 }
             }
+
+            /// Get a referece to the data.
             pub fn bytes(&self) -> &[u8] {
                 match *self {
                     $(
@@ -412,6 +426,7 @@ pub struct MacCommandIterator<'a, T> {
 }
 
 impl<'a, T> MacCommandIterator<'a, T> {
+    /// Creation.
     pub fn new(data: &'a [u8]) -> Self {
         Self { data, index: 0, item: Default::default() }
     }
@@ -553,10 +568,12 @@ impl<const N: usize> ChannelMask<N> {
         Ok(Self::new_from_raw(data))
     }
 
+    /// Set the channel masks for a bank of 8 channels.
     pub fn set_bank(&mut self, index: usize, value: u8) {
         self.0[index] = value;
     }
 
+    /// Get the channel masks for a bank of 8 channels.
     pub fn get_index(&self, index: usize) -> u8 {
         self.0[index]
     }
@@ -790,6 +807,7 @@ impl Frequency {
         Self(payload)
     }
 
+    /// Prepares a frequency value for inclusion in a payload.
     pub fn new_from_value(value: &u32) -> Self {
         let value = value / 100;
         let data = value.to_le_bytes();
@@ -950,12 +968,17 @@ impl<'a> RXTimingSetupReqPayload<'a> {
 }
 
 impl<'a> TXParamSetupReqPayload<'a> {
+    /// Is dwell time for network server to end device?
     pub fn downlink_dwell_time(&self) -> bool {
         self.0[0] & (1 << 5) != 0
     }
+
+    /// Is dwell time for end device to network server?
     pub fn uplink_dwell_time(&self) -> bool {
         self.0[0] & (1 << 4) != 0
     }
+
+    /// Get the maximum EIRP by conversion.
     pub fn max_eirp(&self) -> u8 {
         match self.0[0] & (0b1111) {
             0 => 8,
@@ -1012,10 +1035,12 @@ impl DlChannelAnsPayload<'_> {
 }
 
 impl DeviceTimeAnsPayload<'_> {
+    /// Get the  seconds part of the network time.
     pub fn seconds(&self) -> u32 {
         u32::from_le_bytes([self.0[3], self.0[2], self.0[1], self.0[0]])
     }
-    //raw value in 1/256 seconds
+
+    /// Get the fractional seconds part of the network time.
     pub fn nano_seconds(&self) -> u32 {
         (self.0[4] as u32) * 3906250
     }
