@@ -108,14 +108,14 @@ where
 
     /// Get the minimum frequency, perhaps unique to the given end device.
     fn min_frequency() -> u32 {
-        match <D as Device>::min_frequency() {
+        match D::min_frequency() {
             Some(device_min_frequency) => max(device_min_frequency, R::min_frequency()),
             None => R::min_frequency(),
         }
     }
     /// Get the maximum frequency, perhaps unique to the given end device.
     fn max_frequency() -> u32 {
-        match <D as Device>::max_frequency() {
+        match D::max_frequency() {
             Some(device_max_frequency) => min(device_max_frequency, R::max_frequency()),
             None => R::max_frequency(),
         }
@@ -313,10 +313,7 @@ where
         device: &mut D,
         rx_quality: RxQuality,
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'_>>,
-    ) -> Result<(), crate::Error<D>>
-    where
-        D: Device,
-    {
+    ) -> Result<(), crate::Error<D>> {
         let mut channel_mask = self.channel_plan.get_channel_mask();
         let mut cmd_iter = cmds.into_iter().peekable();
         while let Some(cmd) = cmd_iter.next() {
@@ -650,10 +647,7 @@ where
         &'m mut self,
         device: &'m mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
-    ) -> Result<(), crate::Error<D>>
-    where
-        D: Device,
-    {
+    ) -> Result<(), crate::Error<D>> {
         self.credentials.incr_dev_nonce();
         device
             .persist_to_non_volatile(&self.configuration, &self.credentials)

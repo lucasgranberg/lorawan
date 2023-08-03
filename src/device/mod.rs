@@ -74,7 +74,7 @@ pub trait Device {
         &mut self,
         configuration: &Configuration,
         credentials: &Credentials,
-    ) -> Result<(), <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error> {
+    ) -> Result<(), <Self::NonVolatileStore as NonVolatileStore>::Error> {
         let storable = Storable {
             rx1_data_rate_offset: configuration.rx1_data_rate_offset,
             rx_delay: configuration.rx_delay,
@@ -102,10 +102,8 @@ pub trait Device {
         app_eui: [u8; 8],
         dev_eui: [u8; 8],
         app_key: [u8; 16],
-    ) -> Result<
-        (Configuration, Credentials),
-        <<Self as Device>::NonVolatileStore as NonVolatileStore>::Error,
-    > {
+    ) -> Result<(Configuration, Credentials), <Self::NonVolatileStore as NonVolatileStore>::Error>
+    {
         let storable: Storable = non_volatile_store.load()?;
         let configuration = Configuration {
             rx1_data_rate_offset: storable.rx1_data_rate_offset,
