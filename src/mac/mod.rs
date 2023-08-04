@@ -109,7 +109,7 @@ where
             None => R::min_frequency(),
         }
     }
-    /// Get the maximum frequency, perhaps unique to the given end device.
+    /// Get the maximum frequency, perhaps unique to the given end device
     fn max_frequency<D: Device>() -> u32 {
         match D::max_frequency() {
             Some(device_max_frequency) => min(device_max_frequency, R::max_frequency()),
