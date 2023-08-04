@@ -70,27 +70,24 @@ where
 }
 
 /// Composition of properties needed to guide LoRaWAN MAC layer processing, supporting the LoRaWAN MAC API.
-pub struct Mac<R, D, C>
+pub struct Mac<R, C>
 where
     R: Region,
     C: ChannelPlan<R> + Default,
-    D: Device,
 {
     pub(crate) session: Option<Session>,
     pub(crate) channel_plan: C,
     pub(crate) region: PhantomData<R>,
-    pub(crate) device: PhantomData<D>,
     pub(crate) uplink_cmds: Vec<UplinkMacCommandCreator, 15>,
     pub(crate) ack_next: bool,
     pub(crate) configuration: Configuration,
     pub(crate) credentials: Credentials,
 }
 
-impl<R, D, C> Mac<R, D, C>
+impl<R, C> Mac<R, C>
 where
     R: region::Region,
     C: ChannelPlan<R> + Default,
-    D: Device,
 {
     /// Creation.
     pub fn new(configuration: Configuration, credentials: Credentials) -> Self {
@@ -98,7 +95,6 @@ where
             session: None,
             channel_plan: Default::default(),
             region: PhantomData,
-            device: PhantomData,
             uplink_cmds: Vec::new(),
             ack_next: false,
             configuration,
@@ -107,27 +103,27 @@ where
     }
 
     /// Get the minimum frequency, perhaps unique to the given end device.
-    fn min_frequency() -> u32 {
+    fn min_frequency<D: Device>() -> u32 {
         match D::min_frequency() {
             Some(device_min_frequency) => max(device_min_frequency, R::min_frequency()),
             None => R::min_frequency(),
         }
     }
     /// Get the maximum frequency, perhaps unique to the given end device.
-    fn max_frequency() -> u32 {
+    fn max_frequency<D: Device>() -> u32 {
         match D::max_frequency() {
             Some(device_max_frequency) => min(device_max_frequency, R::max_frequency()),
             None => R::max_frequency(),
         }
     }
     /// Is the frequency within range for the given end device.
-    fn validate_frequency(frequency: u32) -> bool {
-        let frequency_range = Self::min_frequency()..Self::max_frequency();
+    fn validate_frequency<D: Device>(frequency: u32) -> bool {
+        let frequency_range = Self::min_frequency::<D>()..Self::max_frequency::<D>();
         frequency_range.contains(&frequency)
     }
 
     /// Get the maximum uplink data rate, perhaps unique to the given end device.
-    fn max_data_rate() -> DR {
+    fn max_data_rate<D: Device>() -> DR {
         match D::max_data_rate() {
             Some(device_max_data_rate) => {
                 min(device_max_data_rate as u8, R::ul_data_rate_range().1 as u8).try_into().unwrap()
@@ -137,7 +133,7 @@ where
     }
 
     /// Get the minumum uplink data rate, perhaps unique to the given end device.
-    fn min_data_rate() -> DR {
+    fn min_data_rate<D: Device>() -> DR {
         match D::min_data_rate() {
             Some(device_min_data_rate) => {
                 max(device_min_data_rate as u8, R::ul_data_rate_range().0 as u8).try_into().unwrap()
@@ -152,28 +148,28 @@ where
     }
 
     /// Is the uplink data rate within range for the given end device?
-    fn validate_data_rate(dr: u8) -> bool {
-        DR::try_from(dr).unwrap().in_range((Self::min_data_rate(), Self::max_data_rate()))
+    fn validate_data_rate<D: Device>(dr: u8) -> bool {
+        DR::try_from(dr).unwrap().in_range((Self::min_data_rate::<D>(), Self::max_data_rate::<D>()))
     }
 
     /// Are the downlink data rate settings in range for the given end device?
-    fn validate_dl_settings(dl_settings: DLSettings) -> (bool, bool) {
+    fn validate_dl_settings<D: Device>(dl_settings: DLSettings) -> (bool, bool) {
         let rx1_data_rate_offset_ack =
             Self::validate_rx1_data_rate_offset(dl_settings.rx1_dr_offset());
-        let rx2_data_rate_ack = Self::validate_data_rate(dl_settings.rx2_data_rate());
+        let rx2_data_rate_ack = Self::validate_data_rate::<D>(dl_settings.rx2_data_rate());
         (rx1_data_rate_offset_ack, rx2_data_rate_ack)
     }
 
     /// Get the maximum EIRP for the end device.
-    fn max_eirp() -> u8 {
+    fn max_eirp<D: Device>() -> u8 {
         min(R::max_eirp(), D::max_eirp())
     }
 
     /// Get the transmission power based on the frame type.
-    fn get_tx_pwr(frame: Frame, configuration: &Configuration) -> u8 {
+    fn get_tx_pwr<D: Device>(frame: Frame, configuration: &Configuration) -> u8 {
         match frame {
-            Frame::Join => Self::max_eirp(),
-            Frame::Data => configuration.tx_power.unwrap_or(Self::max_eirp()),
+            Frame::Join => Self::max_eirp::<D>(),
+            Frame::Data => configuration.tx_power.unwrap_or(Self::max_eirp::<D>()),
         }
     }
 
@@ -252,13 +248,13 @@ where
         }
     }
 
-    fn create_tx_config(
+    fn create_tx_config<D: Device>(
         &self,
         frame: Frame,
         channel: &C::Channel,
         dr: DR,
     ) -> Result<TxConfig, crate::Error<D>> {
-        let pw = Self::get_tx_pwr(frame, &self.configuration);
+        let pw = Self::get_tx_pwr::<D>(frame, &self.configuration);
         let data_rate = R::convert_data_rate(dr)?;
         let tx_config = TxConfig {
             pw,
@@ -271,7 +267,7 @@ where
         Ok(tx_config)
     }
 
-    fn create_rf_config(
+    fn create_rf_config<D: Device>(
         &self,
         frame: &Frame,
         window: &Window,
@@ -308,7 +304,7 @@ where
         Ok(rf_config)
     }
 
-    fn handle_downlink_macs(
+    fn handle_downlink_macs<D: Device>(
         &mut self,
         device: &mut D,
         rx_quality: RxQuality,
@@ -390,7 +386,7 @@ where
                 DownlinkMacCommand::RXParamSetupReq(payload) => {
                     let mut ans = RXParamSetupAnsCreator::new();
                     let (mut rx1_data_rate_offset_ack, mut rx2_data_rate_ack) =
-                        Self::validate_dl_settings(payload.dl_settings());
+                        Self::validate_dl_settings::<D>(payload.dl_settings());
                     let channel_ack =
                         self.channel_plan.validate_frequency(payload.frequency().value()).is_ok();
                     if channel_ack && rx1_data_rate_offset_ack && rx2_data_rate_ack {
@@ -418,16 +414,15 @@ where
                     if (payload.channel_index() as usize) < R::default_channels(true) {
                         None //silently ignore if default channel
                     } else {
-                        let data_rate_range_ack =
-                            Self::validate_data_rate(payload.data_rate_range().min_data_rate())
-                                && Self::validate_data_rate(
-                                    payload.data_rate_range().max_data_rate(),
-                                )
-                                && payload.data_rate_range().min_data_rate()
-                                    < payload.data_rate_range().max_data_rate();
+                        let data_rate_range_ack = Self::validate_data_rate::<D>(
+                            payload.data_rate_range().min_data_rate(),
+                        ) && Self::validate_data_rate::<D>(
+                            payload.data_rate_range().max_data_rate(),
+                        ) && payload.data_rate_range().min_data_rate()
+                            < payload.data_rate_range().max_data_rate();
 
                         let channel_frequency_ack = payload.frequency().value() == 0
-                            || Self::validate_frequency(payload.frequency().value());
+                            || Self::validate_frequency::<D>(payload.frequency().value());
 
                         let mut ans = NewChannelAnsCreator::new();
                         ans.set_channel_frequency_ack(channel_frequency_ack);
@@ -444,7 +439,7 @@ where
                 DownlinkMacCommand::DlChannelReq(payload) => {
                     let mut ans = DlChannelAnsCreator::new();
                     let mut channel_frequency_ack =
-                        Self::validate_frequency(payload.frequency().value());
+                        Self::validate_frequency::<D>(payload.frequency().value());
                     //let mut uplink_frequency_exists_ack = false;
                     let uplink_frequency_exists_ack = self
                         .channel_plan
@@ -484,7 +479,7 @@ where
         Ok(())
     }
 
-    async fn rx_with_timeout<'m>(
+    async fn rx_with_timeout<'m, D: Device>(
         &self,
         frame: Frame,
         device: &mut D,
@@ -531,17 +526,14 @@ where
         }
     }
 
-    fn prepare_buffer(
+    fn prepare_buffer<D: Device>(
         &mut self,
         data: &[u8],
         fport: u8,
         confirmed: bool,
         radio_buffer: &mut RadioBuffer<256>,
         device: &D,
-    ) -> Result<u32, crate::Error<D>>
-    where
-        D: Device,
-    {
+    ) -> Result<u32, crate::Error<D>> {
         if let Some(session) = &self.session {
             // check if FCnt is used up
             if session.fcnt_up() == (0xFFFF + 1) {
@@ -583,7 +575,7 @@ where
         }
     }
 
-    async fn send_buffer(
+    async fn send_buffer<D: Device>(
         &self,
         device: &mut D,
         radio_buffer: &mut RadioBuffer<256>,
@@ -643,7 +635,7 @@ where
     }
 
     /// Establish a session between the end device and a network server.
-    pub async fn join<'m>(
+    pub async fn join<'m, D: Device>(
         &'m mut self,
         device: &'m mut D,
         radio_buffer: &'m mut RadioBuffer<256>,
@@ -677,7 +669,7 @@ where
                         self.session.replace(session);
 
                         let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
-                            Self::validate_dl_settings(decrypt.dl_settings());
+                            Self::validate_dl_settings::<D>(decrypt.dl_settings());
                         trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
                         if rx1_data_rate_offset_ack && rx2_data_rate_ack {
                             self.handle_dl_settings(decrypt.dl_settings())?
@@ -707,7 +699,7 @@ where
     }
 
     /// Send data from the end device to a network server on an established session.
-    pub async fn send(
+    pub async fn send<D: Device>(
         &mut self,
         device: &mut D,
         radio_buffer: &mut RadioBuffer<256>,
