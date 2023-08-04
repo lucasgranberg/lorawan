@@ -164,7 +164,7 @@ where
         (rx1_data_rate_offset_ack, rx2_data_rate_ack)
     }
 
-    /// Get the maximum EIRP for the ednd device.
+    /// Get the maximum EIRP for the end device.
     fn max_eirp() -> u8 {
         min(R::max_eirp(), D::max_eirp())
     }
