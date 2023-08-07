@@ -743,8 +743,10 @@ where
         if let Some(ref mut session_data) = self.session {
             if !session_data.is_expired() {
                 session_data.fcnt_up_increment();
-                self.adr_ack_cnt_increment();
-                self.adr_back_off();
+                if device.adaptive_data_rate_enabled() {
+                    self.adr_ack_cnt_increment();
+                    self.adr_back_off();
+                }
             } else {
                 return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
             }
