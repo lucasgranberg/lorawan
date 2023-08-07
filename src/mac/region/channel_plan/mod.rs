@@ -68,4 +68,6 @@ where
     fn handle_cf_list(&mut self, cf_list: CfList) -> Result<(), Error>;
     /// Does the uplink frequency exist in the channel plan?
     fn validate_frequency(&self, frequency: u32) -> Result<(), Error>;
+    /// Reset all uplink frequency channels for ADR
+    fn reset_uplink_frequecy_channels(&mut self);
 }

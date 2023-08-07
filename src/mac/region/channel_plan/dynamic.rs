@@ -301,4 +301,8 @@ where
         }
         Err(Error::InvalidFrequency)
     }
+
+    fn reset_uplink_frequecy_channels(&mut self) {
+        todo!()
+    }
 }

@@ -82,6 +82,7 @@ where
     pub(crate) ack_next: bool,
     pub(crate) configuration: Configuration,
     pub(crate) credentials: Credentials,
+    pub(crate) adr_ack_cnt: u8,
 }
 
 impl<R, C> Mac<R, C>
@@ -99,6 +100,7 @@ where
             ack_next: false,
             configuration,
             credentials,
+            adr_ack_cnt: 0,
         }
     }
 
@@ -209,6 +211,31 @@ where
         match frame {
             Frame::Join => R::default_rx2_data_rate(),
             Frame::Data => self.configuration.rx2_data_rate.unwrap_or(R::default_rx2_data_rate()),
+        }
+    }
+
+    fn adr_ack_cnt_increment(&mut self) {
+        if let Some(val) = self.adr_ack_cnt.checked_add(1) {
+            self.adr_ack_cnt = val
+        };
+    }
+
+    fn adr_back_off(&mut self) {
+        if self.adr_ack_cnt >= (R::default_adr_ack_limit() + R::default_adr_ack_delay()) {
+            // Start back off sequence
+            if self.configuration.tx_power.is_some() {
+                // First reset tx_power to default
+                self.configuration.tx_power = None;
+            } else {
+                // Next decrese tx_power until it reaches default
+                if self.configuration.tx_data_rate.is_some() {
+                    self.configuration.tx_data_rate =
+                        R::next_adr_data_rate(self.configuration.tx_data_rate);
+                } else {
+                    self.configuration.number_of_transmissions = 1;
+                    self.channel_plan.reset_uplink_frequecy_channels();
+                }
+            }
         }
     }
 
@@ -552,6 +579,10 @@ where
                 fctrl.set_ack();
             }
 
+            if self.adr_ack_cnt >= R::default_adr_ack_limit() {
+                fctrl.set_adr_ack_req();
+            }
+
             phy.set_confirmed(confirmed)
                 .set_uplink(true)
                 .set_fctrl(&fctrl)
@@ -667,6 +698,7 @@ where
                         trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
                         trace!("rx2 {:?}", decrypt.c_f_list());
                         self.session.replace(session);
+                        self.adr_ack_cnt = 0;
 
                         let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
                             Self::validate_dl_settings::<D>(decrypt.dl_settings());
@@ -711,6 +743,8 @@ where
         if let Some(ref mut session_data) = self.session {
             if !session_data.is_expired() {
                 session_data.fcnt_up_increment();
+                self.adr_ack_cnt_increment();
+                self.adr_back_off();
             } else {
                 return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
             }
@@ -740,6 +774,7 @@ where
                         if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
                             // clear all uplink cmds here after successfull downlink
                             self.uplink_cmds.clear();
+                            self.adr_ack_cnt = 0;
                             let fcnt = encrypted_data.fhdr().fcnt() as u32;
                             // use temporary variable for ack_next to only confirm if the message was correctly handled
                             let ack_next = encrypted_data.is_confirmed();

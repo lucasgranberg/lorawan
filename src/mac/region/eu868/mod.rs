@@ -85,6 +85,20 @@ impl crate::mac::Region for EU868 {
             _ => Err(super::Error::DataRateNotSupported(dr)),
         }
     }
+
+    fn next_adr_data_rate(current_dr: Option<DR>) -> Option<DR> {
+        match current_dr {
+            Some(DR::_0) => None,
+            Some(DR::_1) => Some(DR::_0),
+            Some(DR::_2) => Some(DR::_1),
+            Some(DR::_3) => Some(DR::_2),
+            Some(DR::_4) => Some(DR::_3),
+            Some(DR::_5) => Some(DR::_4),
+            Some(DR::_6) => Some(DR::_5),
+            _ => Some(DR::_0),
+        }
+    }
+
     fn default_coding_rate() -> CodingRate {
         CodingRate::_4_5
     }

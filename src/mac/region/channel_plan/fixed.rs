@@ -214,4 +214,8 @@ where
         // be mostly called to validate downlink frequencies, and some MAC commands using it are inapplicable to fixed channel plans.
         Err(Error::CommandNotImplementedForRegion) // ???
     }
+
+    fn reset_uplink_frequecy_channels(&mut self) {
+        todo!()
+    }
 }
