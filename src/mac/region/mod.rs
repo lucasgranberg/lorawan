@@ -62,6 +62,9 @@ pub trait Region {
     fn max_frequency() -> u32;
     /// Convert the data rate to spreading factor and bandwidth for the region.
     fn convert_data_rate(dr: DR) -> Result<Datarate, Error>;
+    /// get next data rate for adaptive data rate back off
+    /// return None when the next data rate would be the default
+    fn next_adr_data_rate(current_dr: Option<DR>) -> Option<DR>;
     /// For the region, determine the RX1 data rate based on the uplink data rate and data rate offset.
     fn get_rx1_dr(ul_dr: DR, rx1_dr_offset: u8) -> Result<DR, Error>;
     /// Does the region support TXParamSetupReq packet processing?
@@ -82,12 +85,8 @@ pub trait Region {
     fn default_join_accept_delay2() -> u16 {
         Self::default_join_accept_delay1() + 1000
     }
-    /// Get the default maximum frame count gap for the region.
-    fn default_max_fcnt_gap() -> u32 {
-        16384
-    }
     /// Get the default ADR acknowledgement limit for the region.
-    fn default_adr_ack_limit() -> usize {
+    fn default_adr_ack_limit() -> u8 {
         64
     }
     /// Get the default ADR acknowledgement delay for the region.

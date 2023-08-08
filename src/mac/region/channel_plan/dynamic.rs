@@ -125,10 +125,6 @@ where
 {
     type Channel = DynamicChannel;
 
-    fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<DynamicChannel>> {
-        self.channels.get_mut(index)
-    }
-
     // Randomly choose one valid channel (if one exists) from each channel block  The returned array is likely sparsely populated.
     // The first block initially contains 3 valid join channels, one of which will be randomly chosen for a join request as the first block
     // representative.  This may need to change if more valid join channels are added to the first block.
@@ -300,5 +296,12 @@ where
             }
         }
         Err(Error::InvalidFrequency)
+    }
+
+    fn reactivate_channels(&mut self) {
+        // Only set the default channels to active; leave other channels as-is.
+        for index in 0..R::default_channels(true) {
+            self.mask[index] = true;
+        }
     }
 }

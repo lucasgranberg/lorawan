@@ -8,8 +8,6 @@
 #![doc = include_str!("../README.md")]
 
 use core::fmt::Debug;
-mod fmt;
-
 use device::Device;
 use mac::region;
 

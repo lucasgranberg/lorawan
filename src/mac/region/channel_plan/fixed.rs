@@ -65,10 +65,6 @@ where
 {
     type Channel = FixedChannel;
 
-    fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<FixedChannel>> {
-        self.channels.get_mut(index)
-    }
-
     // Randomly choose one valid channel (if one exists) from each channel block  The returned array is likely sparsely populated.
     fn get_random_channels_from_blocks(
         &self,
@@ -213,5 +209,13 @@ where
         // Possibly the validation done here should only be to check that the frequency is within min/max limits.  It seems to
         // be mostly called to validate downlink frequencies, and some MAC commands using it are inapplicable to fixed channel plans.
         Err(Error::CommandNotImplementedForRegion) // ???
+    }
+
+    fn reactivate_channels(&mut self) {
+        // Set all default channels to active.
+        self.mask = [false; MAX_CHANNELS];
+        for index in 0..R::default_channels(true) {
+            self.mask[index] = true;
+        }
     }
 }

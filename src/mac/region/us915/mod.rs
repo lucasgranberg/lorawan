@@ -144,6 +144,19 @@ impl crate::mac::Region for US915 {
         }
     }
 
+    fn next_adr_data_rate(current_dr: Option<DR>) -> Option<DR> {
+        match current_dr {
+            Some(DR::_0) => None,
+            Some(DR::_1) => Some(DR::_0),
+            Some(DR::_2) => Some(DR::_1),
+            Some(DR::_3) => Some(DR::_2),
+            Some(DR::_4) => Some(DR::_3),
+            Some(DR::_5) => Some(DR::_0),
+            Some(DR::_6) => Some(DR::_5),
+            _ => Some(DR::_0),
+        }
+    }
+
     fn get_rx1_dr(ul_dr: DR, rx1_dr_offset: u8) -> Result<DR, super::Error> {
         if rx1_dr_offset > 3 {
             return Err(super::Error::UnsupportedRx1DROffset(ul_dr, rx1_dr_offset));
