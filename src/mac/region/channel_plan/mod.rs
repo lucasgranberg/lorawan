@@ -37,8 +37,6 @@ where
     /// Dynamic or fixed channel type.
     type Channel: Channel;
 
-    /// Get a mutable reference to a channel based on channel ID, if the channel exists.
-    fn get_mut_channel(&mut self, index: usize) -> Option<&mut Option<Self::Channel>>;
     /// Get an active channel randomly from each channel block based on the frame type (join or data).  The resulting
     /// collection may be sparesely populated.
     fn get_random_channels_from_blocks(
@@ -68,6 +66,6 @@ where
     fn handle_cf_list(&mut self, cf_list: CfList) -> Result<(), Error>;
     /// Does the uplink frequency exist in the channel plan?
     fn validate_frequency(&self, frequency: u32) -> Result<(), Error>;
-    /// Reset all uplink frequency channels for ADR
-    fn reset_uplink_frequecy_channels(&mut self);
+    /// Reactivate channels for ADR
+    fn reactivate_channels(&mut self);
 }

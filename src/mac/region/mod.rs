@@ -85,10 +85,6 @@ pub trait Region {
     fn default_join_accept_delay2() -> u16 {
         Self::default_join_accept_delay1() + 1000
     }
-    /// Get the default maximum frame count gap for the region.
-    fn default_max_fcnt_gap() -> u32 {
-        16384
-    }
     /// Get the default ADR acknowledgement limit for the region.
     fn default_adr_ack_limit() -> u8 {
         64

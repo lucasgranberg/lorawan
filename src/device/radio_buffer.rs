@@ -32,7 +32,7 @@ impl<const N: usize> RadioBuffer<N> {
 
     /// Add data as long as it fits within the buffer.
     pub fn extend_from_slice(&mut self, buf: &[u8]) -> Result<(), Error> {
-        if self.pos + buf.len() < self.packet.len() {
+        if self.pos + buf.len() <= self.packet.len() {
             self.packet[self.pos..self.pos + buf.len()].copy_from_slice(buf);
             self.pos += buf.len();
             Ok(())
@@ -48,7 +48,7 @@ impl<const N: usize> RadioBuffer<N> {
 
     /// Update the start position for subsequent data additions.
     pub fn inc(&mut self, len: usize) {
-        assert!(self.pos + len < self.packet.len());
+        assert!(self.pos + len <= self.packet.len());
         self.pos += len;
     }
 }

@@ -120,7 +120,7 @@ where
     }
     /// Is the frequency within range for the given end device.
     fn validate_frequency<D: Device>(frequency: u32) -> bool {
-        let frequency_range = Self::min_frequency::<D>()..Self::max_frequency::<D>();
+        let frequency_range = Self::min_frequency::<D>()..=Self::max_frequency::<D>();
         frequency_range.contains(&frequency)
     }
 
@@ -233,7 +233,7 @@ where
                         R::next_adr_data_rate(self.configuration.tx_data_rate);
                 } else {
                     self.configuration.number_of_transmissions = 1;
-                    self.channel_plan.reset_uplink_frequecy_channels();
+                    self.channel_plan.reactivate_channels();
                 }
             }
         }
