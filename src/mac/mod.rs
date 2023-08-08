@@ -156,8 +156,9 @@ where
     }
 
     /// Is the RX1 data rate offset within range for the given end device?
-    fn validate_rx1_data_rate_offset(rx1_dr_offset: u8) -> bool {
-        (0u8..=5u8).contains(&rx1_dr_offset)
+    fn validate_rx1_data_rate_offset<D: Device>(rx1_dr_offset: u8) -> bool {
+        R::get_rx1_dr(Self::min_data_rate::<D>(), rx1_dr_offset).is_ok()
+            && R::get_rx1_dr(Self::max_data_rate::<D>(), rx1_dr_offset).is_ok()
     }
 
     /// Is the uplink data rate within range for the given end device?
@@ -168,7 +169,7 @@ where
     /// Are the downlink data rate settings in range for the given end device?
     fn validate_dl_settings<D: Device>(dl_settings: DLSettings) -> (bool, bool) {
         let rx1_data_rate_offset_ack =
-            Self::validate_rx1_data_rate_offset(dl_settings.rx1_dr_offset());
+            Self::validate_rx1_data_rate_offset::<D>(dl_settings.rx1_dr_offset());
         let rx2_data_rate_ack = Self::validate_data_rate::<D>(dl_settings.rx2_data_rate());
         (rx1_data_rate_offset_ack, rx2_data_rate_ack)
     }
