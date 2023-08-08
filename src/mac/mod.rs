@@ -42,6 +42,17 @@ use crate::{
         },
     },
 };
+#[cfg(not(feature = "defmt"))]
+macro_rules! trace {
+    ($s:literal $(, $x:expr)* $(,)?) => {
+        {
+            let _ = ($( & $x ),*);
+        }
+    };
+}
+#[cfg(feature = "defmt")]
+use defmt::trace;
+
 use futures::pin_mut;
 use heapless::Vec;
 use types::*;

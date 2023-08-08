@@ -21,7 +21,6 @@ use super::maccommands::{DLSettings, Frequency};
 use super::parser;
 use super::securityhelpers;
 
-#[cfg(feature = "default-crypto")]
 use super::default_crypto::DefaultFactory;
 
 #[cfg(feature = "with-downlink")]
@@ -57,12 +56,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory + Default> JoinAcceptCreator<D, F> {
             return Err(Error::BufferTooSmall);
         }
         d[0] = 0x20;
-        Ok(Self {
-            data,
-            with_c_f_list: false,
-            encrypted: false,
-            factory,
-        })
+        Ok(Self { data, with_c_f_list: false, encrypted: false, factory })
     }
 
     /// Sets the AppNonce of the JoinAccept to the provided value.
@@ -212,12 +206,7 @@ impl JoinAcceptCreator<[u8; 33], DefaultFactory> {
     pub fn new() -> Self {
         let mut data = [0; 33];
         data[0] = 0x20;
-        Self {
-            data,
-            with_c_f_list: false,
-            encrypted: false,
-            factory: DefaultFactory,
-        }
+        Self { data, with_c_f_list: false, encrypted: false, factory: DefaultFactory }
     }
 }
 
@@ -343,12 +332,7 @@ impl<D: AsMut<[u8]>, F: CryptoFactory + Default> DataPayloadCreator<D, F> {
             return Err(Error::BufferTooSmall);
         }
         d[0] = 0x40;
-        Ok(DataPayloadCreator {
-            data,
-            data_f_port: None,
-            fcnt: 0,
-            factory,
-        })
+        Ok(DataPayloadCreator { data, data_f_port: None, fcnt: 0, factory })
     }
 
     /// Sets whether the packet is uplink or downlink.
@@ -572,11 +556,6 @@ impl DataPayloadCreator<GenericArray<u8, U256>, DefaultFactory> {
     pub fn new() -> Self {
         let mut data: GenericArray<u8, U256> = GenericArray::default();
         data[0] = 0x40;
-        Self {
-            data,
-            data_f_port: None,
-            fcnt: 0,
-            factory: DefaultFactory,
-        }
+        Self { data, data_f_port: None, fcnt: 0, factory: DefaultFactory }
     }
 }
