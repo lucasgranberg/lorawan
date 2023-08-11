@@ -44,6 +44,7 @@ pub(crate) mod tests {
     use crate::device::timer::Timer;
     use crate::mac::types::Storable;
 
+    #[derive(Debug, PartialEq, defmt::Format)]
     pub(crate) struct RadioMock {}
     impl Radio for RadioMock {
         type Error = RadioError;
@@ -68,6 +69,7 @@ pub(crate) mod tests {
     pub(crate) enum NonVolatileStoreError {
         Encoding,
     }
+    #[derive(Debug, PartialEq, defmt::Format)]
     pub(crate) struct NonVolatileStoreMock {}
     impl NonVolatileStore for NonVolatileStoreMock {
         type Error = NonVolatileStoreError;
@@ -81,6 +83,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[derive(Debug, PartialEq, defmt::Format)]
     pub(crate) struct RngMock {}
     impl Rng for RngMock {
         type Error = Infallible;
@@ -90,6 +93,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[derive(Debug, PartialEq, defmt::Format)]
     pub(crate) struct TimerMock {}
     impl Timer for TimerMock {
         type Error = Infallible;
@@ -102,6 +106,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[derive(Debug, PartialEq, defmt::Format)]
     pub(crate) struct DeviceMock {
         rng: RngMock,
         radio: RadioMock,
