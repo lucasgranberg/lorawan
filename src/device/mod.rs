@@ -147,4 +147,10 @@ pub trait Device {
     fn max_data_rate() -> Option<DR> {
         None
     }
+    /// Get the preferred channel block index for join requests as indicated by the caller.
+    /// For both dynamic and fixed plans, there are a maximum of 80 channels: 10 channel blocks
+    /// of 8 channels each.  Therefore, valid indexes are 0 through 9.
+    fn preferred_join_channel_block_index() -> usize {
+        0
+    }
 }

@@ -156,8 +156,9 @@ where
     }
 
     /// Is the RX1 data rate offset within range for the given end device?
-    fn validate_rx1_data_rate_offset(rx1_dr_offset: u8) -> bool {
-        (0u8..=5u8).contains(&rx1_dr_offset)
+    fn validate_rx1_data_rate_offset<D: Device>(rx1_dr_offset: u8) -> bool {
+        R::get_rx1_dr(Self::min_data_rate::<D>(), rx1_dr_offset).is_ok()
+            && R::get_rx1_dr(Self::max_data_rate::<D>(), rx1_dr_offset).is_ok()
     }
 
     /// Is the uplink data rate within range for the given end device?
@@ -168,7 +169,7 @@ where
     /// Are the downlink data rate settings in range for the given end device?
     fn validate_dl_settings<D: Device>(dl_settings: DLSettings) -> (bool, bool) {
         let rx1_data_rate_offset_ack =
-            Self::validate_rx1_data_rate_offset(dl_settings.rx1_dr_offset());
+            Self::validate_rx1_data_rate_offset::<D>(dl_settings.rx1_dr_offset());
         let rx2_data_rate_ack = Self::validate_data_rate::<D>(dl_settings.rx2_data_rate());
         (rx1_data_rate_offset_ack, rx2_data_rate_ack)
     }
@@ -626,15 +627,7 @@ where
         let tx_buffer = radio_buffer.clone();
 
         for _ in 0..self.configuration.number_of_transmissions {
-            let mut channel_block_randoms = [0x00u32; NUM_OF_CHANNEL_BLOCKS];
-            for channel_block_random in channel_block_randoms.iter_mut().take(NUM_OF_CHANNEL_BLOCKS)
-            {
-                *channel_block_random =
-                    device.rng().next_u32().map_err(crate::device::Error::Rng)?;
-            }
-            let channels =
-                self.channel_plan.get_random_channels_from_blocks(channel_block_randoms, frame)?;
-
+            let channels = self.get_send_channels(device, frame)?;
             for channel in channels {
                 if let Some(chn) = channel {
                     let tx_data_rate = R::override_ul_data_rate_if_necessary(
@@ -856,5 +849,123 @@ where
         } else {
             Err(crate::Error::Mac(Error::NetworkNotJoined))
         }
+    }
+
+    fn get_send_channels<D: Device>(
+        &self,
+        device: &mut D,
+        frame: Frame,
+    ) -> Result<[Option<<C as ChannelPlan<R>>::Channel>; NUM_OF_CHANNEL_BLOCKS], crate::Error<D>>
+    {
+        let mut channel_block_randoms = [0x00u32; NUM_OF_CHANNEL_BLOCKS];
+        for channel_block_random in channel_block_randoms.iter_mut().take(NUM_OF_CHANNEL_BLOCKS) {
+            *channel_block_random = device.rng().next_u32().map_err(crate::device::Error::Rng)?;
+        }
+        let mut channels = self
+            .channel_plan
+            .get_random_channels_from_blocks(channel_block_randoms)
+            .unwrap_or([None, None, None, None, None, None, None, None, None, None]);
+
+        // Place the preferred channel block first if a join request is being
+        // executed, the index is greater than zero indicating a swap is needed, and
+        // the index is valid.
+        let swap_index = D::preferred_join_channel_block_index();
+        if (frame == Frame::Join) && (swap_index > 0) && (swap_index < NUM_OF_CHANNEL_BLOCKS) {
+            channels.swap(0, swap_index);
+        }
+        Ok(channels)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use crate::mac::region::channel_plan::dynamic::DynamicChannelPlan;
+    use crate::mac::region::channel_plan::fixed::FixedChannelPlan;
+    use crate::mac::region::eu868::EU868;
+    use crate::mac::region::us915::US915;
+    use crate::mac::Mac;
+    use crate::tests::*;
+
+    use super::types::{Credentials, Frame};
+
+    #[test]
+    fn validate_frequency() {
+        assert!(Mac::<EU868, DynamicChannelPlan<EU868>>::validate_frequency::<DeviceMock>(
+            863_000_000
+        ));
+        assert!(Mac::<EU868, DynamicChannelPlan<EU868>>::validate_frequency::<DeviceMock>(
+            870_000_000
+        ));
+        assert!(!Mac::<EU868, DynamicChannelPlan<EU868>>::validate_frequency::<DeviceMock>(
+            870_000_001
+        ));
+        assert!(Mac::<US915, FixedChannelPlan<US915>>::validate_frequency::<DeviceMock>(
+            902_000_000
+        ));
+        assert!(Mac::<US915, FixedChannelPlan<US915>>::validate_frequency::<DeviceMock>(
+            928_000_000
+        ));
+        assert!(!Mac::<US915, FixedChannelPlan<US915>>::validate_frequency::<DeviceMock>(
+            928_000_001
+        ));
+    }
+
+    #[test]
+    fn validate_rx1_data_rate_offset() {
+        assert!(
+            Mac::<EU868, DynamicChannelPlan<EU868>>::validate_rx1_data_rate_offset::<DeviceMock>(0)
+        );
+        assert!(
+            Mac::<EU868, DynamicChannelPlan<EU868>>::validate_rx1_data_rate_offset::<DeviceMock>(5)
+        );
+        assert!(!Mac::<EU868, DynamicChannelPlan<EU868>>::validate_rx1_data_rate_offset::<
+            DeviceMock,
+        >(6));
+        assert!(
+            Mac::<US915, DynamicChannelPlan<US915>>::validate_rx1_data_rate_offset::<DeviceMock>(0)
+        );
+        assert!(
+            Mac::<US915, DynamicChannelPlan<US915>>::validate_rx1_data_rate_offset::<DeviceMock>(3)
+        );
+        assert!(!Mac::<US915, DynamicChannelPlan<US915>>::validate_rx1_data_rate_offset::<
+            DeviceMock,
+        >(4));
+    }
+
+    #[test]
+    fn get_send_channels() {
+        let mac_eu868 = Mac::<EU868, DynamicChannelPlan<EU868>>::new(
+            Default::default(),
+            Credentials::new([0u8; 8], [0u8; 8], [0u8; 16]),
+        );
+        let channels_eu868 =
+            mac_eu868.get_send_channels(&mut DeviceMock::new(), Frame::Join).unwrap();
+        assert!(channels_eu868[0].is_some());
+        assert!(channels_eu868[1].is_none());
+        assert!(channels_eu868[2].is_none());
+        assert!(channels_eu868[3].is_none());
+        assert!(channels_eu868[4].is_none());
+        assert!(channels_eu868[5].is_none());
+        assert!(channels_eu868[6].is_none());
+        assert!(channels_eu868[7].is_none());
+        assert!(channels_eu868[8].is_none());
+        assert!(channels_eu868[9].is_none());
+
+        let mac_us915 = Mac::<US915, FixedChannelPlan<US915>>::new(
+            Default::default(),
+            Credentials::new([0u8; 8], [0u8; 8], [0u8; 16]),
+        );
+        let channels_us915 =
+            mac_us915.get_send_channels(&mut DeviceMock::new(), Frame::Join).unwrap();
+        assert!(channels_us915[0].is_some());
+        assert!(channels_us915[1].is_some());
+        assert!(channels_us915[2].is_some());
+        assert!(channels_us915[3].is_some());
+        assert!(channels_us915[4].is_some());
+        assert!(channels_us915[5].is_some());
+        assert!(channels_us915[6].is_some());
+        assert!(channels_us915[7].is_some());
+        assert!(channels_us915[8].is_some());
+        assert!(channels_us915[9].is_none());
     }
 }

@@ -126,13 +126,10 @@ where
     type Channel = DynamicChannel;
 
     // Randomly choose one valid channel (if one exists) from each channel block  The returned array is likely sparsely populated.
-    // The first block initially contains 3 valid join channels, one of which will be randomly chosen for a join request as the first block
-    // representative.  This may need to change if more valid join channels are added to the first block.
     fn get_random_channels_from_blocks(
         &self,
         channel_block_randoms: [u32; NUM_OF_CHANNEL_BLOCKS],
-        frame: Frame,
-    ) -> Result<[Option<DynamicChannel>; NUM_OF_CHANNEL_BLOCKS], Error> {
+    ) -> Result<[Option<DynamicChannel>; NUM_OF_CHANNEL_BLOCKS], crate::mac::region::Error> {
         let mut random_channels: [Option<DynamicChannel>; NUM_OF_CHANNEL_BLOCKS] =
             [None; NUM_OF_CHANNEL_BLOCKS];
 
@@ -140,20 +137,12 @@ where
             let mut count = 0usize;
             let mut available_channel_ids_in_block: [Option<usize>; NUM_OF_CHANNELS_IN_BLOCK] =
                 [None; NUM_OF_CHANNELS_IN_BLOCK];
-
-            if (i == 0) && (frame == Frame::Join) {
-                for j in 0..R::default_channels(true) {
-                    available_channel_ids_in_block[count] = Some(j);
-                    count += 1;
-                }
-            } else {
-                for j in 0..NUM_OF_CHANNELS_IN_BLOCK {
-                    let channel_index: usize = (i * NUM_OF_CHANNELS_IN_BLOCK) + j;
-                    if let Some(_channel) = &self.channels[channel_index] {
-                        if self.mask[channel_index] {
-                            available_channel_ids_in_block[count] = Some(channel_index);
-                            count += 1;
-                        }
+            for j in 0..NUM_OF_CHANNELS_IN_BLOCK {
+                let channel_index: usize = (i * NUM_OF_CHANNELS_IN_BLOCK) + j;
+                if let Some(_channel) = &self.channels[channel_index] {
+                    if self.mask[channel_index] {
+                        available_channel_ids_in_block[count] = Some(channel_index);
+                        count += 1;
                     }
                 }
             }

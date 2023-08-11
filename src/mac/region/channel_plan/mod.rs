@@ -37,12 +37,10 @@ where
     /// Dynamic or fixed channel type.
     type Channel: Channel;
 
-    /// Get an active channel randomly from each channel block based on the frame type (join or data).  The resulting
-    /// collection may be sparesely populated.
+    /// Get an active channel randomly from each channel block. The resulting collection may be sparsely populated.
     fn get_random_channels_from_blocks(
         &self,
         channel_block_randoms: [u32; NUM_OF_CHANNEL_BLOCKS],
-        frame: Frame,
     ) -> Result<[Option<Self::Channel>; NUM_OF_CHANNEL_BLOCKS], Error>;
     /// Handle a new channel request from a network server.
     fn handle_new_channel_req(&mut self, payload: NewChannelReqPayload) -> Result<(), Error>;

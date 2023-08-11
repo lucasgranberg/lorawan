@@ -69,7 +69,6 @@ where
     fn get_random_channels_from_blocks(
         &self,
         channel_block_randoms: [u32; NUM_OF_CHANNEL_BLOCKS],
-        _frame: crate::mac::types::Frame,
     ) -> Result<[Option<FixedChannel>; NUM_OF_CHANNEL_BLOCKS], crate::mac::region::Error> {
         let mut random_channels: [Option<FixedChannel>; NUM_OF_CHANNEL_BLOCKS] =
             [None; NUM_OF_CHANNEL_BLOCKS];
