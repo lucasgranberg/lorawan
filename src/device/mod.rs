@@ -109,13 +109,13 @@ pub trait Device {
 
     /// Restore information required to maintain end device communication with a network server.
     fn hydrate_from_non_volatile(
-        non_volatile_store: &mut Self::NonVolatileStore,
+        &mut self,
         app_eui: [u8; 8],
         dev_eui: [u8; 8],
         app_key: [u8; 16],
     ) -> Result<(Configuration, Credentials), <Self::NonVolatileStore as NonVolatileStore>::Error>
     {
-        let storable: Storable = non_volatile_store.load()?;
+        let storable: Storable = self.non_volatile_store().load()?;
         let configuration = Configuration {
             rx1_data_rate_offset: storable.rx1_data_rate_offset,
             rx_delay: storable.rx_delay,
