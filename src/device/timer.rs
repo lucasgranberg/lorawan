@@ -6,9 +6,9 @@ use core::{fmt::Debug, future::Future};
 /// between RX windows.
 pub trait Timer: Sized {
     /// Notification of reaching a time point.
-    type AtFuture<'m>: Future<Output = ()> + 'm
+    type AtFuture<'a>: Future<Output = ()> + 'a
     where
-        Self: 'm;
+        Self: 'a;
     /// Possible result error.
     #[cfg(feature = "defmt")]
     type Error: Debug + defmt::Format;

@@ -34,8 +34,6 @@ pub(crate) mod tests {
     use core::convert::Infallible;
     use core::future::Future;
 
-    use lora_phy::mod_params::RadioError;
-
     use super::*;
     use crate::device::non_volatile_store::NonVolatileStore;
     use crate::device::radio::types::{RfConfig, RxQuality, TxConfig};
@@ -47,9 +45,9 @@ pub(crate) mod tests {
     #[derive(Debug, PartialEq, defmt::Format)]
     pub(crate) struct RadioMock {}
     impl Radio for RadioMock {
-        type Error = RadioError;
+        type Error = Infallible;
         async fn tx(&mut self, _config: TxConfig, _buf: &[u8]) -> Result<usize, Self::Error> {
-            Err(RadioError::TransmitTimeout)
+            Ok(0)
         }
         async fn rx(
             &mut self,
@@ -57,11 +55,11 @@ pub(crate) mod tests {
             _window_in_secs: u8,
             _rx_buf: &mut [u8],
         ) -> Result<(usize, RxQuality), Self::Error> {
-            Err(RadioError::ReceiveTimeout)
+            Ok((0, RxQuality { rssi: 0, snr: 0 }))
         }
 
         async fn sleep(&mut self, _warm_start: bool) -> Result<(), Self::Error> {
-            Err(RadioError::TimeoutUnexpected)
+            Ok(())
         }
     }
 
