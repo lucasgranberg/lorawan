@@ -518,11 +518,11 @@ where
         Ok(())
     }
 
-    async fn rx_with_timeout<'m, D: Device>(
+    async fn rx_with_timeout<'a, D: Device>(
         &self,
         frame: Frame,
         device: &mut D,
-        radio_buffer: &'m mut RadioBuffer<256>,
+        radio_buffer: &'a mut RadioBuffer<256>,
         data_rate: DR,
         channel: &C::Channel,
     ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
@@ -670,10 +670,10 @@ where
     }
 
     /// Establish a session between the end device and a network server.
-    pub async fn join<'m, D: Device>(
-        &'m mut self,
-        device: &'m mut D,
-        radio_buffer: &'m mut RadioBuffer<256>,
+    pub async fn join<'a, D: Device>(
+        &'a mut self,
+        device: &'a mut D,
+        radio_buffer: &'a mut RadioBuffer<256>,
     ) -> Result<(), crate::Error<D>> {
         self.credentials.incr_dev_nonce();
         device
