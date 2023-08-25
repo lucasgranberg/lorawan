@@ -652,8 +652,16 @@ where
                             radio_buffer.inc(num_read);
                             return Ok(Some((num_read, rx_quality)));
                         }
-                        Ok(None) => {}
-                        Err(_e) => {}
+                        Ok(None) => {
+                            if frame == Frame::Data {
+                                return Ok(None);
+                            }
+                        }
+                        Err(e) => {
+                            if frame == Frame::Data {
+                                return Err(e);
+                            }
+                        }
                     }
                 }
 
