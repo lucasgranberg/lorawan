@@ -626,7 +626,7 @@ where
     ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
         let tx_buffer = radio_buffer.clone();
 
-        for _ in 0..self.configuration.number_of_transmissions {
+        for trans_index in 0..self.configuration.number_of_transmissions {
             let channels = self.get_send_channels(device, frame)?;
             for channel in channels {
                 if let Some(chn) = channel {
@@ -654,12 +654,20 @@ where
                         }
                         Ok(None) => {
                             if frame == Frame::Data {
-                                return Ok(None);
+                                if (trans_index + 1) >= self.configuration.number_of_transmissions {
+                                    return Ok(None);
+                                } else {
+                                    break;
+                                }
                             }
                         }
                         Err(e) => {
                             if frame == Frame::Data {
-                                return Err(e);
+                                if (trans_index + 1) >= self.configuration.number_of_transmissions {
+                                    return Err(e);
+                                } else {
+                                    break;
+                                }
                             }
                         }
                     }
