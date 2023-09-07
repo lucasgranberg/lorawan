@@ -1,6 +1,8 @@
 //! Wrapper for all necessary functionality implemented by calling code.
 
 pub mod non_volatile_store;
+pub mod packet_buffer;
+pub mod packet_queue;
 pub mod radio;
 pub mod radio_buffer;
 pub mod rng;
@@ -13,6 +15,7 @@ use timer::Timer;
 use crate::mac::types::{Configuration, Credentials, Storable, DR};
 
 use self::non_volatile_store::NonVolatileStore;
+use self::packet_queue::PacketQueue;
 
 #[cfg(not(feature = "defmt"))]
 macro_rules! trace {
@@ -57,6 +60,8 @@ pub trait Device {
     type Rng: Rng;
     /// Storage capability provided by calling code.
     type NonVolatileStore: NonVolatileStore;
+    /// Uplink/downlink packet queue provided by calling code.
+    type PacketQueue: PacketQueue;
 
     /// Get the caller-supplied timer implementation.
     fn timer(&mut self) -> &mut Self::Timer;
@@ -66,6 +71,10 @@ pub trait Device {
     fn rng(&mut self) -> &mut Self::Rng;
     /// Get the caller-supplied persistence implementation.
     fn non_volatile_store(&mut self) -> &mut Self::NonVolatileStore;
+    /// Get the caller-supplied uplink packet queue.
+    fn uplink_packet_queue(&mut self) -> &mut Self::PacketQueue;
+    /// Get the caller-supplied downlink packet queue.
+    fn downlink_packet_queue(&mut self) -> &mut Self::PacketQueue;
     /// Get the caller-supplied maximum EIRP.
     fn max_eirp() -> u8;
     /// Process the DeviceTimeAns response from a network server as directed by the caller.

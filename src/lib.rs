@@ -36,6 +36,8 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::device::non_volatile_store::NonVolatileStore;
+    use crate::device::packet_buffer::PacketBuffer;
+    use crate::device::packet_queue::{PacketQueue, PACKET_SIZE};
     use crate::device::radio::types::{RfConfig, RxQuality, TxConfig};
     use crate::device::radio::Radio;
     use crate::device::rng::Rng;
@@ -105,11 +107,29 @@ pub(crate) mod tests {
     }
 
     #[derive(Debug, PartialEq, defmt::Format)]
+    pub(crate) struct PacketQueueMock {}
+    impl PacketQueue for PacketQueueMock {
+        type Error = Infallible;
+
+        async fn push(&mut self, _packet: PacketBuffer<PACKET_SIZE>) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        async fn next(&mut self) -> Result<PacketBuffer<PACKET_SIZE>, Self::Error> {
+            Ok(PacketBuffer::default())
+        }
+        fn available(&mut self) -> bool {
+            false
+        }
+    }
+
+    #[derive(Debug, PartialEq, defmt::Format)]
     pub(crate) struct DeviceMock {
         rng: RngMock,
         radio: RadioMock,
         timer: TimerMock,
         non_volatile_store: NonVolatileStoreMock,
+        uplink_packet_queue: PacketQueueMock,
+        downlink_packet_queue: PacketQueueMock,
     }
 
     impl DeviceMock {
@@ -120,6 +140,8 @@ pub(crate) mod tests {
                 radio: RadioMock {},
                 timer: TimerMock {},
                 non_volatile_store: NonVolatileStoreMock {},
+                uplink_packet_queue: PacketQueueMock {},
+                downlink_packet_queue: PacketQueueMock {},
             }
         }
     }
@@ -132,6 +154,8 @@ pub(crate) mod tests {
         type Rng = RngMock;
 
         type NonVolatileStore = NonVolatileStoreMock;
+
+        type PacketQueue = PacketQueueMock;
 
         fn timer(&mut self) -> &mut Self::Timer {
             &mut self.timer
@@ -147,6 +171,14 @@ pub(crate) mod tests {
 
         fn non_volatile_store(&mut self) -> &mut Self::NonVolatileStore {
             &mut self.non_volatile_store
+        }
+
+        fn uplink_packet_queue(&mut self) -> &mut Self::PacketQueue {
+            &mut self.uplink_packet_queue
+        }
+
+        fn downlink_packet_queue(&mut self) -> &mut Self::PacketQueue {
+            &mut self.downlink_packet_queue
         }
 
         fn max_eirp() -> u8 {
