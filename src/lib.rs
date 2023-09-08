@@ -117,8 +117,8 @@ pub(crate) mod tests {
         async fn next(&mut self) -> Result<PacketBuffer<PACKET_SIZE>, Self::Error> {
             Ok(PacketBuffer::default())
         }
-        fn available(&mut self) -> bool {
-            false
+        fn available(&mut self) -> Result<bool, Self::Error> {
+            Ok(false)
         }
     }
 

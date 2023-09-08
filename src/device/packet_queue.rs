@@ -23,5 +23,5 @@ pub trait PacketQueue: Sized {
     /// Get the oldest packet from the queue.
     async fn next(&mut self) -> Result<PacketBuffer<PACKET_SIZE>, Self::Error>;
     /// Determine if the queue holds one or more packets.
-    fn available(&mut self) -> bool;
+    fn available(&mut self) -> Result<bool, Self::Error>;
 }
