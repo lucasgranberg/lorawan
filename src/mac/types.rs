@@ -28,6 +28,8 @@ pub struct Configuration {
     pub(crate) rx2_data_rate: Option<DR>,
     pub(crate) rx2_frequency: Option<u32>,
     pub(crate) number_of_transmissions: u8,
+    /// Class(es) supported by the end device.
+    pub class_mode: ClassMode,
 }
 
 impl Default for Configuration {
@@ -41,6 +43,7 @@ impl Default for Configuration {
             rx2_data_rate: None,
             rx2_frequency: None,
             number_of_transmissions: 1,
+            class_mode: ClassMode::A,
         }
     }
 }
@@ -224,4 +227,12 @@ pub enum Frame {
 pub enum Window {
     _1,
     _2,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[allow(missing_docs)]
+pub enum ClassMode {
+    A,
+    AB,
+    AC,
 }

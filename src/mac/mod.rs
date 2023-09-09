@@ -15,6 +15,7 @@ use self::region::{
     Region,
 };
 
+use crate::device::packet_queue::PacketQueue;
 use crate::{
     device::radio::{
         types::{RfConfig, TxConfig},
@@ -112,6 +113,79 @@ where
             configuration,
             credentials,
             adr_ack_cnt: 0,
+        }
+    }
+
+    /// Run the scheduler for processing associated with the class modes (A, AB, AC).
+    pub async fn run_scheduler<D: Device + defmt::Format>(&mut self, device: &mut D) {
+        let mut radio_buffer = Default::default();
+        loop {
+            while !self.is_joined() {
+                defmt::info!("JOINING");
+                match self.join(device, &mut radio_buffer).await {
+                    Ok(res) => defmt::info!("Network joined! {:?}", res),
+                    Err(e) => {
+                        defmt::error!("Join failed {:?}", e);
+                        device.timer().reset();
+                        let join_fut = match device
+                            .timer()
+                            .at((60 * 1000) as u64)
+                            .map_err(crate::device::Error::<D>::Timer)
+                        {
+                            Ok(fut) => fut,
+                            Err(e) => {
+                                defmt::error!("Timer error {:?}", e);
+                                return;
+                            }
+                        };
+                        join_fut.await;
+                    }
+                };
+            }
+
+            device.timer().reset();
+            let uplink_data_fut =
+                match device.timer().at(1000).map_err(crate::device::Error::<D>::Timer) {
+                    Ok(fut) => fut,
+                    Err(e) => {
+                        defmt::error!("Timer error {:?}", e);
+                        return;
+                    }
+                };
+            pin_mut!(uplink_data_fut);
+            uplink_data_fut.await;
+            let has_uplink_packet = match device.uplink_packet_queue().available() {
+                Ok(true) => true,
+                Ok(false) => false,
+                Err(e) => {
+                    defmt::error!("Uplink packet queue read error {:?}", e);
+                    false
+                }
+            };
+
+            if has_uplink_packet {
+                match device.uplink_packet_queue().next().await {
+                    Ok(packet_buffer) => {
+                        defmt::info!("SENDING");
+                        radio_buffer = Default::default();
+                        let send_res: Result<Option<(usize, RxQuality)>, _> = self
+                            .send(device, &mut radio_buffer, packet_buffer.as_ref(), 1, false, None)
+                            .await;
+                        match send_res {
+                            Ok(res) => defmt::info!("{:?}", res),
+                            Err(e) => {
+                                defmt::error!("{:?}", e);
+                            }
+                        }
+                    }
+                    Err(e) => defmt::error!("Uplink packet queue read error {:?}", e),
+                }
+
+                match device.radio().sleep(false).await {
+                    Ok(()) => {}
+                    Err(e) => defmt::error!("Radio sleep failed with error {:?}", e),
+                }
+            }
         }
     }
 
