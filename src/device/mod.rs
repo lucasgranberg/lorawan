@@ -39,6 +39,7 @@ where
     Radio(<<D as Device>::Radio as Radio>::Error),
     Rng(<<D as Device>::Rng as Rng>::Error),
     NonVolatileStore(<<D as Device>::NonVolatileStore as NonVolatileStore>::Error),
+    PacketQueue(<<D as Device>::PacketQueue as PacketQueue>::Error),
     RadioBuffer(radio_buffer::Error),
 }
 impl<D> From<Error<D>> for super::Error<D>

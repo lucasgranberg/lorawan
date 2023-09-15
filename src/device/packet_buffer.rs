@@ -12,17 +12,18 @@ pub enum Error {
 pub struct PacketBuffer<const N: usize> {
     packet: [u8; N],
     pos: usize,
+    pub(crate) confirm_uplink: bool,
 }
 impl<const N: usize> Default for PacketBuffer<N> {
     fn default() -> Self {
-        Self { packet: [0; N], pos: Default::default() }
+        Self { packet: [0; N], pos: Default::default(), confirm_uplink: false }
     }
 }
 
 impl<const N: usize> PacketBuffer<N> {
     /// Creation.
     pub fn new() -> Self {
-        Self { packet: [0; N], pos: 0 }
+        Self { packet: [0; N], pos: 0, confirm_uplink: false }
     }
 
     /// Mark as empty.
@@ -50,6 +51,11 @@ impl<const N: usize> PacketBuffer<N> {
     pub fn inc(&mut self, len: usize) {
         assert!(self.pos + len <= self.packet.len());
         self.pos += len;
+    }
+
+    /// Indicate this packet, to be sent to the network, should be confirmed by the network.
+    pub fn set_confirm_uplink(&mut self) {
+        self.confirm_uplink = true;
     }
 }
 

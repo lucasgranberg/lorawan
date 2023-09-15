@@ -3,6 +3,7 @@
 use core::fmt::Debug;
 
 pub mod region;
+pub mod scheduler;
 pub mod types;
 
 use core::{
@@ -14,18 +15,16 @@ use self::region::{
     channel_plan::{Channel, ChannelPlan, NUM_OF_CHANNEL_BLOCKS},
     Region,
 };
+use self::scheduler::class_a;
 
-use crate::device::packet_queue::PacketQueue;
+use crate::device::packet_buffer::PacketBuffer;
+use crate::device::packet_queue::{PacketQueue, PACKET_SIZE};
 use crate::{
-    device::radio::{
-        types::{RfConfig, TxConfig},
-        Radio,
-    },
+    device::radio::types::{RfConfig, TxConfig},
     device::{
         radio::types::{CodingRate, RxQuality},
         radio_buffer::RadioBuffer,
         rng::Rng,
-        timer::Timer,
         Device,
     },
     encoding::{
@@ -54,7 +53,6 @@ macro_rules! trace {
 #[cfg(feature = "defmt")]
 use defmt::trace;
 
-use futures::pin_mut;
 use heapless::Vec;
 use types::*;
 
@@ -118,73 +116,17 @@ where
 
     /// Run the scheduler for processing associated with the class modes (A, AB, AC).
     pub async fn run_scheduler<D: Device + defmt::Format>(&mut self, device: &mut D) {
-        let mut radio_buffer = Default::default();
-        loop {
-            while !self.is_joined() {
-                defmt::info!("JOINING");
-                match self.join(device, &mut radio_buffer).await {
-                    Ok(res) => defmt::info!("Network joined! {:?}", res),
-                    Err(e) => {
-                        defmt::error!("Join failed {:?}", e);
-                        device.timer().reset();
-                        let join_fut = match device
-                            .timer()
-                            .at((60 * 1000) as u64)
-                            .map_err(crate::device::Error::<D>::Timer)
-                        {
-                            Ok(fut) => fut,
-                            Err(e) => {
-                                defmt::error!("Timer error {:?}", e);
-                                return;
-                            }
-                        };
-                        join_fut.await;
-                    }
-                };
-            }
-
-            device.timer().reset();
-            let uplink_data_fut =
-                match device.timer().at(1000).map_err(crate::device::Error::<D>::Timer) {
-                    Ok(fut) => fut,
-                    Err(e) => {
-                        defmt::error!("Timer error {:?}", e);
-                        return;
-                    }
-                };
-            pin_mut!(uplink_data_fut);
-            uplink_data_fut.await;
-            let has_uplink_packet = match device.uplink_packet_queue().available() {
-                Ok(true) => true,
-                Ok(false) => false,
-                Err(e) => {
-                    defmt::error!("Uplink packet queue read error {:?}", e);
-                    false
+        match self.configuration.class_mode {
+            ClassMode::A => match class_a::run_scheduler(self, device).await {
+                Ok(()) => {
+                    defmt::info!("Class A scheduler exited without error");
                 }
-            };
-
-            if has_uplink_packet {
-                match device.uplink_packet_queue().next().await {
-                    Ok(packet_buffer) => {
-                        defmt::info!("SENDING");
-                        radio_buffer = Default::default();
-                        let send_res: Result<Option<(usize, RxQuality)>, _> = self
-                            .send(device, &mut radio_buffer, packet_buffer.as_ref(), 1, false, None)
-                            .await;
-                        match send_res {
-                            Ok(res) => defmt::info!("{:?}", res),
-                            Err(e) => {
-                                defmt::error!("{:?}", e);
-                            }
-                        }
-                    }
-                    Err(e) => defmt::error!("Uplink packet queue read error {:?}", e),
+                Err(err) => {
+                    defmt::error!("Class A scheduler exited with error {:?}", err);
                 }
-
-                match device.radio().sleep(false).await {
-                    Ok(()) => {}
-                    Err(e) => defmt::error!("Radio sleep failed with error {:?}", e),
-                }
+            },
+            _ => {
+                defmt::error!("Unsupported class mode");
             }
         }
     }
@@ -322,6 +264,190 @@ where
                     self.channel_plan.reactivate_channels();
                 }
             }
+        }
+    }
+
+    fn prepare_for_join_request<'a, D: Device + defmt::Format>(
+        &mut self,
+        device: &'a mut D,
+        radio_buffer: &'a mut RadioBuffer<256>,
+    ) -> Result<(), crate::Error<D>> {
+        self.credentials.incr_dev_nonce();
+        device
+            .persist_to_non_volatile(&self.configuration, &self.credentials)
+            .map_err(crate::device::Error::NonVolatileStore)?;
+        self.create_join_request(radio_buffer);
+        Ok(())
+    }
+
+    fn handle_join_accept<'a, D: Device + defmt::Format>(
+        &mut self,
+        device: &'a mut D,
+        radio_buffer: &'a mut RadioBuffer<256>,
+    ) -> Result<bool, crate::Error<D>> {
+        match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)? {
+            PhyPayload::JoinAccept(encrypted) => {
+                let decrypt = DecryptedJoinAcceptPayload::new_from_encrypted(
+                    encrypted,
+                    &self.credentials.app_key,
+                );
+                if decrypt.validate_mic(&self.credentials.app_key) {
+                    let session = Session::derive_new(
+                        &decrypt,
+                        DevNonce::<[u8; 2]>::new(self.credentials.dev_nonce.to_le_bytes()).unwrap(),
+                        &self.credentials,
+                    );
+                    trace!("msg {=[u8]:02X}", decrypt.as_bytes());
+                    trace!("new {=[u8]:02X}", session.newskey().0);
+                    trace!("app {=[u8]:02X}", session.appskey().0);
+                    trace!("rx1 {:?}", decrypt.dl_settings().rx1_dr_offset());
+                    trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
+                    trace!("rx2 {:?}", decrypt.c_f_list());
+                    self.session.replace(session);
+                    self.adr_ack_cnt = 0;
+
+                    let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
+                        Mac::<R, C>::validate_dl_settings::<D>(decrypt.dl_settings());
+                    trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
+                    if rx1_data_rate_offset_ack && rx2_data_rate_ack {
+                        self.handle_dl_settings(decrypt.dl_settings())?
+                    }
+
+                    let delay = match decrypt.rx_delay() {
+                        0 => 1,
+                        _ => decrypt.rx_delay(),
+                    };
+                    self.configuration.rx_delay = Some(delay);
+                    if let Some(cf_list) = decrypt.c_f_list() {
+                        self.channel_plan.handle_cf_list(cf_list)?;
+                    }
+                    device
+                        .persist_to_non_volatile(&self.configuration, &self.credentials)
+                        .map_err(crate::device::Error::NonVolatileStore)?;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn prepare_for_uplink<D: Device + defmt::Format>(
+        &mut self,
+        device: &mut D,
+        radio_buffer: &mut RadioBuffer<256>,
+        data: &[u8],
+        fport: u8,
+        confirmed: bool,
+    ) -> Result<(), crate::Error<D>> {
+        if let Some(ref mut session_data) = self.session {
+            if !session_data.is_expired() {
+                session_data.fcnt_up_increment();
+                if device.adaptive_data_rate_enabled() {
+                    self.adr_ack_cnt_increment();
+                    self.adr_back_off();
+                }
+            } else {
+                return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
+            }
+        } else {
+            return Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined));
+        }
+        self.prepare_buffer(data, fport, confirmed, radio_buffer, device)?;
+
+        Ok(())
+    }
+
+    async fn handle_downlink<'a, D: Device + defmt::Format>(
+        &mut self,
+        device: &'a mut D,
+        radio_buffer: &'a mut RadioBuffer<256>,
+        rx_quality: RxQuality,
+    ) -> Result<bool, crate::Error<D>> {
+        self.ack_next = false;
+        // Some commands have different ack mechanism
+        // ACK needs to be sent until there is a downlink
+        self.uplink_cmds.retain(|cmd| {
+            matches!(
+                cmd,
+                UplinkMacCommandCreator::RXParamSetupAns(_)
+                    | UplinkMacCommandCreator::RXTimingSetupAns(_)
+                    | UplinkMacCommandCreator::DlChannelAns(_)
+                    | UplinkMacCommandCreator::TXParamSetupAns(_)
+            )
+        });
+        // Handle received data
+        if let Some(ref mut session_data) = self.session {
+            // Parse payload and copy into user buffer is provided
+            match parse_with_factory(radio_buffer, DefaultFactory) {
+                Ok(PhyPayload::Data(encrypted_data)) => {
+                    if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
+                        let fcnt = encrypted_data.fhdr().fcnt() as u32;
+                        // use temporary variable for ack_next to only confirm if the message was correctly handled
+                        let ack_next = encrypted_data.is_confirmed();
+                        if encrypted_data.validate_mic(session_data.newskey(), fcnt)
+                            && (fcnt > session_data.fcnt_down || fcnt == 0)
+                        {
+                            // clear all uplink cmds here after successfull downlink
+                            self.uplink_cmds.clear();
+                            self.adr_ack_cnt = 0;
+                            session_data.fcnt_down = fcnt;
+
+                            // * the decrypt will always work when we have verified MIC previously
+                            let decrypted = DecryptedDataPayload::new_from_encrypted(
+                                encrypted_data,
+                                Some(session_data.newskey()),
+                                Some(session_data.appskey()),
+                                session_data.fcnt_down,
+                            )
+                            .unwrap();
+
+                            trace!("fhdr {:?}", decrypted.fhdr());
+                            self.handle_downlink_macs(
+                                device,
+                                rx_quality,
+                                (&decrypted.fhdr()).into(),
+                            )?;
+                            let res = match decrypted.frm_payload()? {
+                                FRMPayload::MACCommands(mac_cmds) => {
+                                    self.handle_downlink_macs(
+                                        device,
+                                        rx_quality,
+                                        (&mac_cmds).into(),
+                                    )?;
+                                    Ok(true)
+                                }
+                                FRMPayload::Data(rx_data) => {
+                                    let mut downlink_packet = PacketBuffer::<PACKET_SIZE>::new();
+                                    let _todo = downlink_packet.extend_from_slice(rx_data); // handle error ???
+                                    device
+                                        .downlink_packet_queue()
+                                        .push(downlink_packet)
+                                        .await
+                                        .map_err(crate::device::Error::PacketQueue)?;
+                                    Ok(true)
+                                }
+                                FRMPayload::None => Ok(true),
+                            };
+                            device
+                                .persist_to_non_volatile(&self.configuration, &self.credentials)
+                                .map_err(crate::device::Error::NonVolatileStore)?;
+                            if res.is_ok() {
+                                self.ack_next = ack_next;
+                            }
+                            res
+                        } else {
+                            Ok(false)
+                        }
+                    } else {
+                        Ok(false)
+                    }
+                }
+                _ => Ok(false),
+            }
+        } else {
+            Err(crate::Error::Mac(Error::NetworkNotJoined))
         }
     }
 
@@ -592,53 +718,6 @@ where
         Ok(())
     }
 
-    async fn rx_with_timeout<'a, D: Device>(
-        &self,
-        frame: Frame,
-        device: &mut D,
-        radio_buffer: &'a mut RadioBuffer<256>,
-        data_rate: DR,
-        channel: &C::Channel,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
-        let windows = self.get_rx_windows(frame);
-
-        let open_rx1_fut = device
-            .timer()
-            .at(windows.get_open(&Window::_1) as u64)
-            .map_err(crate::device::Error::Timer)?;
-        let open_rx2_fut = device
-            .timer()
-            .at(windows.get_open(&Window::_2) as u64)
-            .map_err(crate::device::Error::Timer)?;
-        pin_mut!(open_rx2_fut);
-        open_rx1_fut.await;
-
-        {
-            radio_buffer.clear();
-            let rf_config = self.create_rf_config(&frame, &Window::_1, data_rate, channel)?;
-            trace!("rf config {:?}", rf_config);
-            match device.radio().rx(rf_config, 1, radio_buffer.as_raw_slice()).await {
-                Ok(ret) => {
-                    return Ok(Some(ret));
-                }
-                // Bail on error other than timeout ???
-                Err(_e) => {}
-            }
-        }
-
-        open_rx2_fut.await;
-
-        {
-            radio_buffer.clear();
-            let rf_config = self.create_rf_config(&frame, &Window::_2, data_rate, channel)?;
-            trace!("rf config {:?}", rf_config);
-            match device.radio().rx(rf_config, 1, radio_buffer.as_raw_slice()).await {
-                Ok(ret) => Ok(Some(ret)),
-                Err(e) => Err(crate::Error::Device(crate::device::Error::Radio(e))),
-            }
-        }
-    }
-
     fn prepare_buffer<D: Device>(
         &mut self,
         data: &[u8],
@@ -689,255 +768,6 @@ where
             Ok(fcnt)
         } else {
             Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined))
-        }
-    }
-
-    async fn send_buffer<D: Device>(
-        &self,
-        device: &mut D,
-        radio_buffer: &mut RadioBuffer<256>,
-        frame: Frame,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
-        let tx_buffer = radio_buffer.clone();
-
-        for trans_index in 0..self.configuration.number_of_transmissions {
-            let channels = self.get_send_channels(device, frame)?;
-            for channel in channels {
-                if let Some(chn) = channel {
-                    let tx_data_rate = R::override_ul_data_rate_if_necessary(
-                        self.tx_data_rate(),
-                        frame,
-                        chn.get_ul_frequency(),
-                    );
-                    let tx_config = self.create_tx_config(frame, &chn, tx_data_rate)?;
-                    trace!("tx config {:?}", tx_config);
-                    let _ms = device
-                        .radio()
-                        .tx(tx_config, tx_buffer.as_ref())
-                        .await
-                        .map_err(crate::device::Error::Radio)?;
-                    device.timer().reset();
-
-                    match self
-                        .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &chn)
-                        .await
-                    {
-                        Ok(Some((num_read, rx_quality))) => {
-                            radio_buffer.inc(num_read);
-                            return Ok(Some((num_read, rx_quality)));
-                        }
-                        Ok(None) => {
-                            if frame == Frame::Data {
-                                if (trans_index + 1) >= self.configuration.number_of_transmissions {
-                                    return Ok(None);
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            if frame == Frame::Data {
-                                if (trans_index + 1) >= self.configuration.number_of_transmissions {
-                                    return Err(e);
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Delay for a random amount of time between 1 and 2 seconds ???
-                let random = device.rng().next_u32().map_err(crate::device::Error::Rng)?;
-                let delay_ms = 1000 + (random % 1000);
-                device.timer().reset();
-                let delay_fut =
-                    device.timer().at(delay_ms as u64).map_err(crate::device::Error::Timer)?;
-                delay_fut.await;
-            }
-        }
-        Ok(None)
-    }
-
-    /// Establish a session between the end device and a network server.
-    pub async fn join<'a, D: Device>(
-        &'a mut self,
-        device: &'a mut D,
-        radio_buffer: &'a mut RadioBuffer<256>,
-    ) -> Result<(), crate::Error<D>> {
-        self.credentials.incr_dev_nonce();
-        device
-            .persist_to_non_volatile(&self.configuration, &self.credentials)
-            .map_err(crate::device::Error::NonVolatileStore)?;
-        self.create_join_request(radio_buffer);
-        let rx_res = self.send_buffer(device, radio_buffer, Frame::Join).await?;
-        if rx_res.is_some() {
-            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)? {
-                PhyPayload::JoinAccept(encrypted) => {
-                    let decrypt = DecryptedJoinAcceptPayload::new_from_encrypted(
-                        encrypted,
-                        &self.credentials.app_key,
-                    );
-                    if decrypt.validate_mic(&self.credentials.app_key) {
-                        let session = Session::derive_new(
-                            &decrypt,
-                            DevNonce::<[u8; 2]>::new(self.credentials.dev_nonce.to_le_bytes())
-                                .unwrap(),
-                            &self.credentials,
-                        );
-                        trace!("msg {=[u8]:02X}", decrypt.as_bytes());
-                        trace!("new {=[u8]:02X}", session.newskey().0);
-                        trace!("app {=[u8]:02X}", session.appskey().0);
-                        trace!("rx1 {:?}", decrypt.dl_settings().rx1_dr_offset());
-                        trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
-                        trace!("rx2 {:?}", decrypt.c_f_list());
-                        self.session.replace(session);
-                        self.adr_ack_cnt = 0;
-
-                        let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
-                            Self::validate_dl_settings::<D>(decrypt.dl_settings());
-                        trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
-                        if rx1_data_rate_offset_ack && rx2_data_rate_ack {
-                            self.handle_dl_settings(decrypt.dl_settings())?
-                        }
-
-                        let delay = match decrypt.rx_delay() {
-                            0 => 1,
-                            _ => decrypt.rx_delay(),
-                        };
-                        self.configuration.rx_delay = Some(delay);
-                        if let Some(cf_list) = decrypt.c_f_list() {
-                            self.channel_plan.handle_cf_list(cf_list)?;
-                        }
-                        device
-                            .persist_to_non_volatile(&self.configuration, &self.credentials)
-                            .map_err(crate::device::Error::NonVolatileStore)?;
-                        Ok(())
-                    } else {
-                        Err(crate::Error::Mac(crate::mac::Error::InvalidMic))
-                    }
-                }
-                _ => Err(crate::Error::Mac(crate::mac::Error::InvalidPayloadType)),
-            }
-        } else {
-            Err(crate::Error::Mac(crate::mac::Error::NoResponse))
-        }
-    }
-
-    /// Send data from the end device to a network server on an established session.
-    pub async fn send<D: Device>(
-        &mut self,
-        device: &mut D,
-        radio_buffer: &mut RadioBuffer<256>,
-        data: &[u8],
-        fport: u8,
-        confirmed: bool,
-        rx: Option<&mut [u8]>,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
-        if let Some(ref mut session_data) = self.session {
-            if !session_data.is_expired() {
-                session_data.fcnt_up_increment();
-                if device.adaptive_data_rate_enabled() {
-                    self.adr_ack_cnt_increment();
-                    self.adr_back_off();
-                }
-            } else {
-                return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
-            }
-        } else {
-            return Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined));
-        }
-        self.prepare_buffer(data, fport, confirmed, radio_buffer, device)?;
-        let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
-        self.ack_next = false;
-        // Some commands have different ack meechanism
-        // ACK needs to be sent until there is a downlink
-        self.uplink_cmds.retain(|cmd| {
-            matches!(
-                cmd,
-                UplinkMacCommandCreator::RXParamSetupAns(_)
-                    | UplinkMacCommandCreator::RXTimingSetupAns(_)
-                    | UplinkMacCommandCreator::DlChannelAns(_)
-                    | UplinkMacCommandCreator::TXParamSetupAns(_)
-            )
-        });
-        // Handle received data
-        if let Some(ref mut session_data) = self.session {
-            // Parse payload and copy into user bufer is provided
-            if let Some((_, rx_quality)) = rx_res {
-                match parse_with_factory(radio_buffer, DefaultFactory) {
-                    Ok(PhyPayload::Data(encrypted_data)) => {
-                        if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
-                            // clear all uplink cmds here after successfull downlink
-                            self.uplink_cmds.clear();
-                            self.adr_ack_cnt = 0;
-                            let fcnt = encrypted_data.fhdr().fcnt() as u32;
-                            // use temporary variable for ack_next to only confirm if the message was correctly handled
-                            let ack_next = encrypted_data.is_confirmed();
-                            if encrypted_data.validate_mic(session_data.newskey(), fcnt)
-                                && (fcnt > session_data.fcnt_down || fcnt == 0)
-                            {
-                                session_data.fcnt_down = fcnt;
-
-                                // * the decrypt will always work when we have verified MIC previously
-                                let decrypted = DecryptedDataPayload::new_from_encrypted(
-                                    encrypted_data,
-                                    Some(session_data.newskey()),
-                                    Some(session_data.appskey()),
-                                    session_data.fcnt_down,
-                                )
-                                .unwrap();
-
-                                trace!("fhdr {:?}", decrypted.fhdr());
-                                self.handle_downlink_macs(
-                                    device,
-                                    rx_quality,
-                                    (&decrypted.fhdr()).into(),
-                                )?;
-                                let res = match decrypted.frm_payload()? {
-                                    FRMPayload::MACCommands(mac_cmds) => {
-                                        self.handle_downlink_macs(
-                                            device,
-                                            rx_quality,
-                                            (&mac_cmds).into(),
-                                        )?;
-                                        Ok(Some((0, rx_quality)))
-                                    }
-                                    FRMPayload::Data(rx_data) => {
-                                        if let Some(rx) = rx {
-                                            let to_copy = core::cmp::min(rx.len(), rx_data.len());
-                                            rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
-                                            Ok(Some((to_copy, rx_quality)))
-                                        } else {
-                                            Ok(Some((0, rx_quality)))
-                                        }
-                                    }
-                                    FRMPayload::None => Ok(Some((0, rx_quality))),
-                                };
-                                device
-                                    .persist_to_non_volatile(&self.configuration, &self.credentials)
-                                    .map_err(crate::device::Error::NonVolatileStore)?;
-                                if res.is_ok() {
-                                    self.ack_next = ack_next;
-                                }
-                                res
-                            } else {
-                                Err(crate::Error::Mac(crate::mac::Error::InvalidMic))
-                            }
-                        } else {
-                            Err(crate::Error::Mac(crate::mac::Error::InvalidDevAddr))
-                        }
-                    }
-                    Ok(_) => Err(crate::Error::Mac(crate::mac::Error::InvalidPayloadType)),
-                    Err(e) => Err(crate::Error::Encoding(e)),
-                }
-            } else if confirmed {
-                Err(crate::Error::Mac(Error::NoResponse))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Err(crate::Error::Mac(Error::NetworkNotJoined))
         }
     }
 
