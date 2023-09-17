@@ -76,6 +76,9 @@ pub trait Device {
     fn uplink_packet_queue(&mut self) -> &mut Self::PacketQueue;
     /// Get the caller-supplied downlink packet queue.
     fn downlink_packet_queue(&mut self) -> &mut Self::PacketQueue;
+    /// Get future generators
+    fn future_generators(&mut self)
+        -> (&mut Self::Timer, &mut Self::Radio, &mut Self::PacketQueue);
     /// Get the caller-supplied maximum EIRP.
     fn max_eirp() -> u8;
     /// Process the DeviceTimeAns response from a network server as directed by the caller.

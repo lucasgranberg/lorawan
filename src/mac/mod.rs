@@ -15,7 +15,7 @@ use self::region::{
     channel_plan::{Channel, ChannelPlan, NUM_OF_CHANNEL_BLOCKS},
     Region,
 };
-use self::scheduler::class_a;
+use self::scheduler::{class_a, class_ac};
 
 use crate::device::packet_buffer::PacketBuffer;
 use crate::device::packet_queue::{PacketQueue, PACKET_SIZE};
@@ -123,6 +123,14 @@ where
                 }
                 Err(err) => {
                     defmt::error!("Class A scheduler exited with error {:?}", err);
+                }
+            },
+            ClassMode::AC => match class_ac::run_scheduler(self, device).await {
+                Ok(()) => {
+                    defmt::info!("Class A/C scheduler exited without error");
+                }
+                Err(err) => {
+                    defmt::error!("Class A/C scheduler exited with error {:?}", err);
                 }
             },
             _ => {

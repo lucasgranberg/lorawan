@@ -80,7 +80,7 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
                 radio_buffer.clear();
                 let rf_config =
                     mac.create_rf_config(&Frame::Data, &Window::_1, tx_data_rate, &channel)?;
-                match device.radio().rx(rf_config, 1, radio_buffer.as_raw_slice()).await {
+                match device.radio().rx(rf_config, Some(1), radio_buffer.as_raw_slice()).await {
                     Ok((num_read, rx_quality)) => {
                         radio_buffer.inc(num_read);
                         match mac.handle_downlink(device, &mut radio_buffer, rx_quality).await {
@@ -106,7 +106,7 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
                     radio_buffer.clear();
                     let rf_config =
                         mac.create_rf_config(&Frame::Data, &Window::_2, tx_data_rate, &channel)?;
-                    match device.radio().rx(rf_config, 1, radio_buffer.as_raw_slice()).await {
+                    match device.radio().rx(rf_config, Some(1), radio_buffer.as_raw_slice()).await {
                         Ok((num_read, rx_quality)) => {
                             radio_buffer.inc(num_read);
                             match mac.handle_downlink(device, &mut radio_buffer, rx_quality).await {

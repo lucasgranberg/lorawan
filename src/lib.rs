@@ -54,7 +54,7 @@ pub(crate) mod tests {
         async fn rx(
             &mut self,
             _config: RfConfig,
-            _window_in_secs: u8,
+            _window_in_secs: Option<u8>,
             _rx_buf: &mut [u8],
         ) -> Result<(usize, RxQuality), Self::Error> {
             Ok((0, RxQuality { rssi: 0, snr: 0 }))
@@ -179,6 +179,12 @@ pub(crate) mod tests {
 
         fn downlink_packet_queue(&mut self) -> &mut Self::PacketQueue {
             &mut self.downlink_packet_queue
+        }
+
+        fn future_generators(
+            &mut self,
+        ) -> (&mut Self::Timer, &mut Self::Radio, &mut Self::PacketQueue) {
+            (&mut self.timer, &mut self.radio, &mut self.uplink_packet_queue)
         }
 
         fn max_eirp() -> u8 {

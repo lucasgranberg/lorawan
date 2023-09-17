@@ -13,7 +13,7 @@ pub trait Radio: Sized {
     #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
-    /// Transmit data buffer with the given tranciever configuration. The returned future
+    /// Transmit data buffer with the given tranceiver configuration. The returned future
     /// should only complete once data have been transmitted.
     async fn tx(&mut self, config: TxConfig, buf: &[u8]) -> Result<usize, Self::Error>;
     /// Receive data into the provided buffer with the given tranceiver configuration. The returned future
@@ -21,7 +21,7 @@ pub trait Radio: Sized {
     async fn rx(
         &mut self,
         config: RfConfig,
-        window_in_secs: u8,
+        window_in_secs: Option<u8>, // None signifies Rx continuous
         rx_buf: &mut [u8],
     ) -> Result<(usize, RxQuality), Self::Error>;
     /// Place the radio in sleep mode with warm or cold start specified.
