@@ -6,6 +6,7 @@ use futures::pin_mut;
 
 use crate::device::packet_buffer::PacketBuffer;
 use crate::device::packet_queue::{PacketQueue, PACKET_SIZE};
+use crate::device::radio::types::{RfConfig, RxQuality};
 use crate::device::radio::Radio;
 use crate::device::radio_buffer::RadioBuffer;
 use crate::device::rng::Rng;
@@ -14,8 +15,8 @@ use crate::device::Device;
 use crate::mac::region::channel_plan::{Channel, ChannelPlan};
 use crate::mac::region::Region;
 use crate::mac::types::Window;
-use crate::mac::Frame;
 use crate::mac::Mac;
+use crate::mac::{Error, Frame};
 
 /// Run the scheduler for processing associated with the class mode A and C.
 pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + defmt::Format>(
@@ -45,24 +46,66 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
         );
         let rf_config =
             mac.create_rf_config(&Frame::Data, &Window::_2, rxc_data_rate, &rxc_channel)?;
-        let mut radio_buffer: RadioBuffer<256> = Default::default();
 
-        let (timer, radio, uplink_packet_queue) = device.future_generators();
+        let (_timer, radio, uplink_packet_queue) = device.future_generators();
 
-        let uplink_packet_queue_fut = uplink_packet_queue.next();
-        let rx_fut = radio.rx(rf_config, None, radio_buffer.as_raw_slice());
-        pin_mut!(uplink_packet_queue_fut);
-        pin_mut!(rx_fut);
-
-        match select(uplink_packet_queue_fut, rx_fut).await {
-            Either::Left(result) => {}
-            Either::Right(result) => {}
-        }
+        let mut radio_buffer = Default::default();
+        match uplink_vs_rxc(radio, uplink_packet_queue, rf_config, &mut radio_buffer).await {
+            (Some(uplink_packet), None) => {
+                let _ = class_a_with_rxc(mac, device, uplink_packet).await; // handle error ???
+            }
+            (None, Some(rxc)) => {
+                radio_buffer.inc(rxc.0);
+                if let Err(err) = mac.handle_downlink(device, &mut radio_buffer, rxc.1).await {
+                    defmt::error!("downlink packet queue error: {:?}", err);
+                }
+            }
+            _ => {}
+        };
     }
 }
 
-/*
-async fn class_a_functionality<R: Region, C: ChannelPlan<R> + Default, D: Device + defmt::Format>(
+async fn uplink_vs_rxc<L, Q>(
+    radio: &mut L,
+    uplink_packet_queue: &mut Q,
+    rf_config: RfConfig,
+    radio_buffer: &mut RadioBuffer<256>,
+) -> (Option<PacketBuffer<PACKET_SIZE>>, Option<(usize, RxQuality)>)
+where
+    L: Radio,
+    Q: PacketQueue,
+{
+    loop {
+        radio_buffer.clear();
+
+        let uplink_packet_queue_fut = uplink_packet_queue.next();
+        let rxc_fut = radio.rx(rf_config, None, radio_buffer.as_raw_slice());
+
+        pin_mut!(uplink_packet_queue_fut);
+        pin_mut!(rxc_fut);
+
+        match select(uplink_packet_queue_fut, rxc_fut).await {
+            Either::Left((result, _)) => match result {
+                Ok(packet) => {
+                    return (Some(packet), None);
+                }
+                Err(err) => {
+                    defmt::error!("uplink packet queue error: {:?}", err);
+                }
+            },
+            Either::Right((result, _)) => match result {
+                Ok(rx_attr) => {
+                    return (None, Some(rx_attr));
+                }
+                Err(err) => {
+                    defmt::error!("RxC rx error: {:?}", err);
+                }
+            },
+        };
+    }
+}
+
+async fn class_a_with_rxc<R: Region, C: ChannelPlan<R> + Default, D: Device + defmt::Format>(
     mac: &mut Mac<R, C>,
     device: &mut D,
     uplink_packet: PacketBuffer<PACKET_SIZE>,
@@ -87,13 +130,14 @@ async fn class_a_functionality<R: Region, C: ChannelPlan<R> + Default, D: Device
         let tx_config = mac.create_tx_config(Frame::Data, &channel, tx_data_rate)?;
         trace!("tx config {:?}", tx_config);
         trans_index += 1;
-        let _ms = radio
+        let _ms = device
+            .radio()
             .tx(tx_config, radio_buffer.as_ref())
             .await
             .map_err(crate::device::Error::Radio)?;
 
         let windows = mac.get_rx_windows(Frame::Data);
-        timer.reset();
+        device.timer().reset();
         let open_rx1_fut = device
             .timer()
             .at(windows.get_open(&Window::_1) as u64)
@@ -110,7 +154,7 @@ async fn class_a_functionality<R: Region, C: ChannelPlan<R> + Default, D: Device
             radio_buffer.clear();
             let rf_config =
                 mac.create_rf_config(&Frame::Data, &Window::_1, tx_data_rate, &channel)?;
-            match radio.rx(rf_config, Some(1), radio_buffer.as_raw_slice()).await {
+            match device.radio().rx(rf_config, Some(1), radio_buffer.as_raw_slice()).await {
                 Ok((num_read, rx_quality)) => {
                     radio_buffer.inc(num_read);
                     match mac.handle_downlink(device, &mut radio_buffer, rx_quality).await {
@@ -136,7 +180,7 @@ async fn class_a_functionality<R: Region, C: ChannelPlan<R> + Default, D: Device
                 radio_buffer.clear();
                 let rf_config =
                     mac.create_rf_config(&Frame::Data, &Window::_2, tx_data_rate, &channel)?;
-                match radio.rx(rf_config, Some(1), radio_buffer.as_raw_slice()).await {
+                match device.radio().rx(rf_config, Some(1), radio_buffer.as_raw_slice()).await {
                     Ok((num_read, rx_quality)) => {
                         radio_buffer.inc(num_read);
                         match mac.handle_downlink(device, &mut radio_buffer, rx_quality).await {
@@ -164,13 +208,12 @@ async fn class_a_functionality<R: Region, C: ChannelPlan<R> + Default, D: Device
             // Delay for a random amount of time between 1 and 2 seconds ???
             let random = device.rng().next_u32().map_err(crate::device::Error::Rng)?;
             let delay_ms = 1000 + (random % 1000);
-            timer.reset();
+            device.timer().reset();
             let delay_fut =
-                timer.at(delay_ms as u64).map_err(crate::device::Error::Timer)?;
+                device.timer().at(delay_ms as u64).map_err(crate::device::Error::Timer)?;
             delay_fut.await;
         }
     }
 
     Ok(())
 }
-*/

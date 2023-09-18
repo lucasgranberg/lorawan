@@ -1,7 +1,7 @@
 //! Types used to control communication with the LoRa physical layer.
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[allow(missing_docs)]
 pub enum Bandwidth {
     _125KHz,
@@ -10,7 +10,7 @@ pub enum Bandwidth {
 }
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[allow(missing_docs)]
 pub enum SpreadingFactor {
     _7,
@@ -22,7 +22,7 @@ pub enum SpreadingFactor {
 }
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[allow(missing_docs)]
 pub enum CodingRate {
     _4_5,
@@ -33,7 +33,7 @@ pub enum CodingRate {
 
 /// LoRaWAN radio signal configuration.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RfConfig {
     /// Frequency in Hz.
     pub frequency: u32,
@@ -45,7 +45,7 @@ pub struct RfConfig {
 
 /// LoRaWAN data rate.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Datarate {
     /// Bandwidth.
     pub bandwidth: Bandwidth,
@@ -55,7 +55,7 @@ pub struct Datarate {
 
 /// LoRaWAN packet transmission configuration.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TxConfig {
     /// Power.
     pub pw: u8,
