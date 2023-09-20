@@ -69,7 +69,7 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
                             }
                         }
                         Err(err) => {
-                            defmt::trace!("Rx1 radio error: {:?}", err);
+                            defmt::error!("Rx1 radio error: {:?}", err);
                         }
                     }
                 }
@@ -94,7 +94,7 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
                             }
                         }
                         Err(err) => {
-                            defmt::trace!("Rx2 radio error: {:?}", err);
+                            defmt::error!("Rx2 radio error: {:?}", err);
                         }
                     }
                 }
