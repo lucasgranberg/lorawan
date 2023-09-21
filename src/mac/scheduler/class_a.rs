@@ -20,6 +20,8 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
     mac: &mut Mac<R, C>,
     device: &mut D,
 ) -> Result<(), crate::Error<D>> {
+    defmt::info!("Class A mode");
+
     loop {
         if !mac.is_joined() {
             match crate::mac::scheduler::join::run_scheduler(mac, device).await {

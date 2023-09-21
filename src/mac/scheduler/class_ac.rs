@@ -18,25 +18,33 @@ use crate::mac::types::{RxWindows, Window, DR};
 use crate::mac::Frame;
 use crate::mac::Mac;
 
-/// Run the scheduler for processing associated with the class mode A and C.
+/// Run the scheduler for processing associated with class mode A and C.
 pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + defmt::Format>(
     mac: &mut Mac<R, C>,
     device: &mut D,
 ) -> Result<(), crate::Error<D>> {
+    defmt::info!("Class A/C mode");
+
+    // Within a loop, wait for an uplink packet from the end device app and an incoming downlink packet
+    // in the RxC window.
+    //
+    // If a downlink packet is detected for this end device in the RxC window, process it.
+    // If it is incoming data for the end device app, it is dumped on a queue so that the execution path is kept
+    // as short as possible. processing then returns to the top of the loop to wait again.
+    //
+    // If an uplink packet is detected on the uplink queue from the end device app, go to a Class A send operation,
+    // followed by interspersed RxC and Rx1/Rx2 windows.  Return to the top of the loop here when that is completed.
     loop {
         if !mac.is_joined() {
             match crate::mac::scheduler::join::run_scheduler(mac, device).await {
-                Ok(()) => match device.radio().sleep(false).await {
-                    Ok(()) => {}
-                    Err(e) => defmt::error!("Radio sleep failed with error {:?}", e),
-                },
+                Ok(()) => {}
                 Err(err) => {
                     return Err(err);
                 }
             }
         }
 
-        // Temporary stub for RxC values.  ???
+        // Temporary stub for RxC values ???
         let rxc_channels = mac.get_send_channels(device, Frame::Data)?;
         let rxc_channel = rxc_channels.into_iter().flatten().next().unwrap();
         let rxc_data_rate = R::override_ul_data_rate_if_necessary(
@@ -53,8 +61,11 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
         match uplink_vs_rxc(radio, uplink_packet_queue, class_c_rf_config, &mut radio_buffer).await
         {
             (Some(uplink_packet), None) => {
-                let _ = class_a_with_rxc(mac, device, uplink_packet, class_c_rf_config).await;
-                // handle error ???
+                if let Err(err) =
+                    class_a_with_rxc(mac, device, uplink_packet, class_c_rf_config).await
+                {
+                    defmt::error!("Class A with RxC error: {:?}", err);
+                }
             }
             (None, Some(rxc)) => {
                 radio_buffer.inc(rxc.0);
@@ -67,6 +78,7 @@ pub async fn run_scheduler<R: Region, C: ChannelPlan<R> + Default, D: Device + d
     }
 }
 
+// After sending an uplink packet, intersperse RxC and Rx1/Rx2 windows to handle any downlink packets.
 async fn class_a_with_rxc<R: Region, C: ChannelPlan<R> + Default, D: Device + defmt::Format>(
     mac: &mut Mac<R, C>,
     device: &mut D,
@@ -131,6 +143,7 @@ async fn class_a_with_rxc<R: Region, C: ChannelPlan<R> + Default, D: Device + de
     Ok(())
 }
 
+// Future handling for uplink packet and downlink packet detection.
 async fn uplink_vs_rxc<L, Q>(
     radio: &mut L,
     uplink_packet_queue: &mut Q,
@@ -171,6 +184,7 @@ where
     }
 }
 
+// Future handling for Rx1/Rx2 window start, with RxC window handling filling the gaps.
 async fn rx1_rx2_vs_rxc<R: Region, C: ChannelPlan<R> + Default, D: Device + defmt::Format>(
     mac: &mut Mac<R, C>,
     device: &mut D,
