@@ -15,18 +15,13 @@ use self::region::{
     Region,
 };
 
+use crate::device::radio::types::RxQuality;
 use crate::{
     device::radio::{
         types::{RfConfig, TxConfig},
         Radio,
     },
-    device::{
-        radio::types::{CodingRate, RxQuality},
-        radio_buffer::RadioBuffer,
-        rng::Rng,
-        timer::Timer,
-        Device,
-    },
+    device::{radio_buffer::RadioBuffer, rng::Rng, timer::Timer, Device},
     encoding::{
         creator::{DataPayloadCreator, JoinRequestCreator},
         default_crypto::DefaultFactory,
@@ -55,6 +50,7 @@ use defmt::trace;
 
 use futures::pin_mut;
 use heapless::Vec;
+use lora_modulation::CodingRate;
 use types::*;
 
 #[derive(Debug)]

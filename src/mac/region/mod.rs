@@ -1,6 +1,8 @@
 //! Specification of functionality implemented for each supported LoRaWAN region.
 
-use crate::device::radio::types::{CodingRate, Datarate};
+use lora_modulation::CodingRate;
+
+use crate::device::radio::types::Datarate;
 use crate::device::Device;
 
 use self::channel_plan::dynamic::DynamicChannel;
