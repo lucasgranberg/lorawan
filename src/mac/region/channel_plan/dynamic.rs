@@ -1,10 +1,10 @@
 //! Dynamic channel plan processing.
 
-use crate::encoding::maccommands::{ChannelMask, DlChannelReqPayload, NewChannelReqPayload};
-use crate::encoding::parser::CfList;
 use crate::mac::region::{Error, Region};
 use crate::mac::types::*;
 use core::marker::PhantomData;
+use encoding::maccommands::{ChannelMask, DlChannelReqPayload, NewChannelReqPayload};
+use encoding::parser::CfList;
 
 use super::{
     Channel, ChannelPlan, MAX_900_CHANNELS, MAX_CHANNELS, NUM_OF_CHANNELS_IN_BLOCK,

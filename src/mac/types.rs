@@ -1,7 +1,7 @@
 //! Properties used in LoRaWAN MAC processing.
 
-use crate::encoding::keys::{CryptoFactory, AES128};
-use crate::encoding::parser::{DecryptedJoinAcceptPayload, DevAddr, DevNonce};
+use encoding::keys::{AppEui, AppKey, AppSKey, CryptoFactory, DevEui, NewSKey};
+use encoding::parser::{DecryptedJoinAcceptPayload, DevAddr, DevNonce};
 
 pub(crate) struct RxWindows {
     pub(crate) rx1_open: u16,
@@ -49,15 +49,20 @@ impl Default for Configuration {
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Credentials {
-    pub(crate) app_eui: [u8; 8],
-    pub(crate) dev_eui: [u8; 8],
-    pub(crate) app_key: AES128,
+    pub(crate) app_eui: AppEui,
+    pub(crate) dev_eui: DevEui,
+    pub(crate) app_key: AppKey,
     pub(crate) dev_nonce: u16,
 }
 impl Credentials {
     /// Creation.
     pub fn new(app_eui: [u8; 8], dev_eui: [u8; 8], app_key: [u8; 16]) -> Self {
-        Self { app_eui, dev_eui, app_key: AES128(app_key), dev_nonce: 0 }
+        Self {
+            app_eui: app_eui.into(),
+            dev_eui: dev_eui.into(),
+            app_key: app_key.into(),
+            dev_nonce: 0,
+        }
     }
 
     /// Increment the nonce associated with a join request.
@@ -68,8 +73,8 @@ impl Credentials {
 
 /// Properties maintained during a session with a network server.
 pub struct Session {
-    pub(crate) newskey: AES128,
-    pub(crate) appskey: AES128,
+    pub(crate) newskey: NewSKey,
+    pub(crate) appskey: AppSKey,
     pub(crate) devaddr: DevAddr<[u8; 4]>,
     pub(crate) fcnt_up: u32,
     pub(crate) fcnt_down: u32,
@@ -95,17 +100,17 @@ impl Session {
     }
 
     /// Creation.
-    pub fn new(newskey: AES128, appskey: AES128, devaddr: DevAddr<[u8; 4]>) -> Self {
+    pub fn new(newskey: NewSKey, appskey: AppSKey, devaddr: DevAddr<[u8; 4]>) -> Self {
         Self { newskey, appskey, devaddr, fcnt_up: 0, fcnt_down: 0 }
     }
 
     /// Get the network session key.
-    pub fn newskey(&self) -> &AES128 {
+    pub fn newskey(&self) -> &NewSKey {
         &self.newskey
     }
 
     /// Get the application session key.
-    pub fn appskey(&self) -> &AES128 {
+    pub fn appskey(&self) -> &AppSKey {
         &self.appskey
     }
 

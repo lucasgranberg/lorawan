@@ -4,7 +4,6 @@ use core::fmt::Debug;
 
 pub mod region;
 pub mod types;
-
 use core::{
     cmp::{max, min},
     marker::PhantomData,
@@ -22,20 +21,18 @@ use crate::{
         Radio,
     },
     device::{radio_buffer::RadioBuffer, rng::Rng, timer::Timer, Device},
-    encoding::{
-        creator::{DataPayloadCreator, JoinRequestCreator},
-        default_crypto::DefaultFactory,
-        maccommandcreator::{
-            DevStatusAnsCreator, DlChannelAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator,
-            NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
-            TXParamSetupAnsCreator, UplinkMacCommandCreator,
-        },
-        maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator, SerializableMacCommand},
-        parser::{
-            parse_with_factory, AsPhyPayloadBytes, DataHeader, DecryptedDataPayload,
-            DecryptedJoinAcceptPayload, DevNonce, FCtrl, FRMPayload, PhyPayload, EUI64,
-        },
+};
+use encoding::parser::AsPhyPayloadBytes;
+use encoding::{
+    creator::{DataPayloadCreator, JoinRequestCreator},
+    default_crypto::DefaultFactory,
+    maccommandcreator::{
+        DevStatusAnsCreator, DlChannelAnsCreator, DutyCycleAnsCreator, LinkADRAnsCreator,
+        NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
+        TXParamSetupAnsCreator, UplinkMacCommandCreator,
     },
+    maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator, SerializableMacCommand},
+    parser::{parse_with_factory, DataHeader, DevNonce, FCtrl, FRMPayload, PhyPayload},
 };
 #[cfg(not(feature = "defmt"))]
 macro_rules! trace {
@@ -254,10 +251,10 @@ where
 
         let devnonce = self.credentials.dev_nonce;
 
-        phy.set_app_eui(EUI64::new(self.credentials.app_eui).unwrap())
-            .set_dev_eui(EUI64::new(self.credentials.dev_eui).unwrap())
+        phy.set_app_eui(self.credentials.app_eui)
+            .set_dev_eui(self.credentials.dev_eui)
             .set_dev_nonce(&devnonce.to_le_bytes());
-        let vec = phy.build(&self.credentials.app_key).unwrap();
+        let vec = phy.build(&self.credentials.app_key);
 
         buf.extend_from_slice(vec).unwrap();
     }
@@ -442,7 +439,7 @@ where
                         Some(battery_level) => ans.set_battery((battery_level * 253.0) as u8 + 1),
                         None => ans.set_battery(255),
                     };
-                    ans.set_margin(rx_quality.snr())?;
+                    ans.set_margin(rx_quality.snr()).map_err(|_| crate::Error::<D>::Encoding)?;
                     Some(UplinkMacCommandCreator::DevStatusAns(ans))
                 }
                 DownlinkMacCommand::NewChannelReq(payload) => {
@@ -604,7 +601,9 @@ where
                     panic!("dyn_cmds too small compared to cmds")
                 }
             }
-            let packet = phy.build(data, &dyn_cmds, session.newskey(), session.appskey())?;
+            let packet = phy
+                .build(data, &dyn_cmds, session.newskey(), session.appskey())
+                .map_err(|_| crate::Error::<D>::Encoding)?;
             trace!("TX: {=[u8]:#02X}", packet);
             radio_buffer.clear();
             radio_buffer.extend_from_slice(packet).map_err(crate::device::Error::RadioBuffer)?;
@@ -694,41 +693,42 @@ where
         self.create_join_request(radio_buffer);
         let rx_res = self.send_buffer(device, radio_buffer, Frame::Join).await?;
         if rx_res.is_some() {
-            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)? {
-                PhyPayload::JoinAccept(encrypted) => {
-                    let decrypt = DecryptedJoinAcceptPayload::new_from_encrypted(
-                        encrypted,
-                        &self.credentials.app_key,
-                    );
-                    if decrypt.validate_mic(&self.credentials.app_key) {
+            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)
+                .map_err(|_| crate::Error::<D>::Encoding)?
+            {
+                PhyPayload::JoinAccept(encoding::parser::JoinAcceptPayload::Encrypted(
+                    encrypted,
+                )) => {
+                    let decrypted = encrypted.decrypt(&self.credentials.app_key);
+                    if decrypted.validate_mic(&self.credentials.app_key) {
                         let session = Session::derive_new(
-                            &decrypt,
+                            &decrypted,
                             DevNonce::<[u8; 2]>::new(self.credentials.dev_nonce.to_le_bytes())
                                 .unwrap(),
                             &self.credentials,
                         );
-                        trace!("msg {=[u8]:02X}", decrypt.as_bytes());
-                        trace!("new {=[u8]:02X}", session.newskey().0);
-                        trace!("app {=[u8]:02X}", session.appskey().0);
-                        trace!("rx1 {:?}", decrypt.dl_settings().rx1_dr_offset());
-                        trace!("rx2 {:?}", decrypt.dl_settings().rx2_data_rate());
-                        trace!("rx2 {:?}", decrypt.c_f_list());
+                        trace!("msg {=[u8]:02X}", decrypted.as_bytes());
+                        trace!("new {=[u8]:02X}", session.newskey().inner().0);
+                        trace!("app {=[u8]:02X}", session.appskey().inner().0);
+                        trace!("rx1 {:?}", decrypted.dl_settings().rx1_dr_offset());
+                        trace!("rx2 {:?}", decrypted.dl_settings().rx2_data_rate());
+                        trace!("rx2 {:?}", decrypted.c_f_list());
                         self.session.replace(session);
                         self.adr_ack_cnt = 0;
 
                         let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
-                            Self::validate_dl_settings::<D>(decrypt.dl_settings());
+                            Self::validate_dl_settings::<D>(decrypted.dl_settings());
                         trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
                         if rx1_data_rate_offset_ack && rx2_data_rate_ack {
-                            self.handle_dl_settings(decrypt.dl_settings())?
+                            self.handle_dl_settings(decrypted.dl_settings())?
                         }
 
-                        let delay = match decrypt.rx_delay() {
+                        let delay = match decrypted.rx_delay() {
                             0 => 1,
-                            _ => decrypt.rx_delay(),
+                            _ => decrypted.rx_delay(),
                         };
                         self.configuration.rx_delay = Some(delay);
-                        if let Some(cf_list) = decrypt.c_f_list() {
+                        if let Some(cf_list) = decrypted.c_f_list() {
                             self.channel_plan.handle_cf_list(cf_list)?;
                         }
                         device
@@ -788,27 +788,26 @@ where
             // Parse payload and copy into user bufer is provided
             if let Some((_, rx_quality)) = rx_res {
                 match parse_with_factory(radio_buffer, DefaultFactory) {
-                    Ok(PhyPayload::Data(encrypted_data)) => {
-                        if session_data.devaddr() == &encrypted_data.fhdr().dev_addr() {
+                    Ok(PhyPayload::Data(encoding::parser::DataPayload::Encrypted(encrypted))) => {
+                        if session_data.devaddr() == &encrypted.fhdr().dev_addr() {
                             // clear all uplink cmds here after successfull downlink
                             self.uplink_cmds.clear();
                             self.adr_ack_cnt = 0;
-                            let fcnt = encrypted_data.fhdr().fcnt() as u32;
+                            let fcnt = encrypted.fhdr().fcnt() as u32;
                             // use temporary variable for ack_next to only confirm if the message was correctly handled
-                            let ack_next = encrypted_data.is_confirmed();
-                            if encrypted_data.validate_mic(session_data.newskey(), fcnt)
+                            let ack_next = encrypted.is_confirmed();
+                            if encrypted.validate_mic(session_data.newskey().inner(), fcnt)
                                 && (fcnt > session_data.fcnt_down || fcnt == 0)
                             {
                                 session_data.fcnt_down = fcnt;
 
-                                // * the decrypt will always work when we have verified MIC previously
-                                let decrypted = DecryptedDataPayload::new_from_encrypted(
-                                    encrypted_data,
-                                    Some(session_data.newskey()),
-                                    Some(session_data.appskey()),
-                                    session_data.fcnt_down,
-                                )
-                                .unwrap();
+                                let decrypted = encrypted
+                                    .decrypt(
+                                        Some(session_data.newskey().inner()),
+                                        Some(session_data.appskey().inner()),
+                                        session_data.fcnt_down,
+                                    )
+                                    .map_err(|_| crate::Error::<D>::Encoding)?;
 
                                 trace!("fhdr {:?}", decrypted.fhdr());
                                 self.handle_downlink_macs(
@@ -816,7 +815,7 @@ where
                                     rx_quality,
                                     (&decrypted.fhdr()).into(),
                                 )?;
-                                let res = match decrypted.frm_payload()? {
+                                let res = match decrypted.frm_payload() {
                                     FRMPayload::MACCommands(mac_cmds) => {
                                         self.handle_downlink_macs(
                                             device,
@@ -851,7 +850,7 @@ where
                         }
                     }
                     Ok(_) => Err(crate::Error::Mac(crate::mac::Error::InvalidPayloadType)),
-                    Err(e) => Err(crate::Error::Encoding(e)),
+                    Err(_) => Err(crate::Error::Encoding),
                 }
             } else if confirmed {
                 Err(crate::Error::Mac(Error::NoResponse))

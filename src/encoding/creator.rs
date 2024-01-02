@@ -10,7 +10,7 @@
 //!
 //! See [JoinAcceptCreator.new](struct.JoinAcceptCreator.html#method.new) for an example.
 
-use crate::encoding::Error;
+use encoding::Error;
 
 use super::keys;
 use super::keys::CryptoFactory;

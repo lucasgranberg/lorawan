@@ -3,9 +3,9 @@
 use core::marker::PhantomData;
 
 use super::Error;
-use crate::encoding::parser::CfList;
 use crate::mac::region::Region;
 use crate::mac::types::*;
+use encoding::parser::CfList;
 
 use super::{Channel, ChannelPlan, MAX_CHANNELS, NUM_OF_CHANNELS_IN_BLOCK, NUM_OF_CHANNEL_BLOCKS};
 
@@ -99,7 +99,7 @@ where
 
     fn handle_new_channel_req(
         &mut self,
-        payload: crate::encoding::maccommands::NewChannelReqPayload,
+        payload: encoding::maccommands::NewChannelReqPayload,
     ) -> Result<(), crate::mac::region::Error> {
         if (payload.channel_index() as usize) < self.channels.len() {
             self.channels[payload.channel_index() as usize] = Some(FixedChannel {
@@ -126,7 +126,7 @@ where
     fn handle_channel_mask(
         &mut self,
         new_mask: &mut [bool; MAX_CHANNELS],
-        channel_mask: crate::encoding::maccommands::ChannelMask<2>,
+        channel_mask: encoding::maccommands::ChannelMask<2>,
         channel_mask_ctrl: u8,
     ) -> Result<(), crate::mac::region::Error> {
         match channel_mask_ctrl {
@@ -185,14 +185,14 @@ where
 
     fn handle_dl_channel_req(
         &mut self,
-        _payload: crate::encoding::maccommands::DlChannelReqPayload,
+        _payload: encoding::maccommands::DlChannelReqPayload,
     ) -> Result<(), crate::mac::region::Error> {
         Err(Error::CommandNotImplementedForRegion)
     }
 
     fn handle_cf_list(
         &mut self,
-        cf_list: crate::encoding::parser::CfList,
+        cf_list: encoding::parser::CfList,
     ) -> Result<(), crate::mac::region::Error> {
         if let CfList::FixedChannel(channel_mask) = cf_list {
             for index in 0..MAX_CHANNELS {
