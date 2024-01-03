@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 #![cfg_attr(test, feature(impl_trait_in_assoc_type))]
-#![allow(incomplete_features)]
+#![allow(async_fn_in_trait)]
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 

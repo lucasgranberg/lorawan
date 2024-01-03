@@ -15,16 +15,15 @@ test = true
 [dependencies]
 heapless = "0.8.0"
 as-slice = "0.2"
-generic-array = "0.14.2"
-aes = { version = "0.8.3", optional = true }
-cmac = { version = "0.7.2", optional = true }
 futures = { version = "0.3.28", default-features = false }
 defmt = { version = "0.3", optional = true }
 serde = { version = "1.0", default-features = false, features = ["derive"], optional = true}
-lora-modulation = "0.1.3"
+lora-modulation = {path="../lora-rs/lora-modulation"}
+encoding={package="lorawan", path="../lora-rs/lorawan-encoding", default-features = false, features = [
+    "default-crypto",
+] }
 
 [features]
-default = ["default-crypto", "defmt","serde"]
-defmt = ["dep:defmt","lora-modulation/defmt"]
-default-crypto = ["aes", "cmac"]
+default = ["defmt","serde"]
+defmt = ["dep:defmt","lora-modulation/defmt","encoding/defmt"]
 serde = ["dep:serde"]
