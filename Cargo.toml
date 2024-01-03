@@ -18,8 +18,8 @@ as-slice = "0.2"
 futures = { version = "0.3.28", default-features = false }
 defmt = { version = "0.3", optional = true }
 serde = { version = "1.0", default-features = false, features = ["derive"], optional = true}
-lora-modulation = {path="../lora-rs/lora-modulation"}
-encoding={package="lorawan", path="../lora-rs/lorawan-encoding", default-features = false, features = [
+lora-modulation = {git="https://github.com/lora-rs/lora-rs", rev="959285f88e54404de61c1dd61389b5a73f36e4f7"}
+encoding={package="lorawan", git="https://github.com/lora-rs/lora-rs", rev="959285f88e54404de61c1dd61389b5a73f36e4f7", default-features = false, features = [
     "default-crypto",
 ] }
 
