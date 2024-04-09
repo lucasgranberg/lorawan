@@ -13,6 +13,7 @@ use super::{
 
 /// Composition of properties and functions needed to represent a dynamic channel.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DynamicChannel {
     pub(crate) ul_frequency: u32,
     pub(crate) dl_frequency: u32,
@@ -33,6 +34,7 @@ impl Channel for DynamicChannel {
 }
 
 /// Composition of properties and functions needed to control a dynamic channel plan.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DynamicChannelPlan<R>
 where
     R: Region,

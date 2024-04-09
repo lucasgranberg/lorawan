@@ -72,6 +72,7 @@ impl Credentials {
 }
 
 /// Properties maintained during a session with a network server.
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Session {
     pub(crate) newskey: NewSKey,
     pub(crate) appskey: AppSKey,
