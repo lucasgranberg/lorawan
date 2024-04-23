@@ -6,7 +6,10 @@ pub mod radio_buffer;
 pub mod rng;
 pub mod timer;
 
-use radio::Radio;
+use lora_phy::mod_params::RadioError;
+use lora_phy::mod_traits::RadioKind;
+use lora_phy::{DelayNs, LoRa};
+//use radio::Radio;
 use rng::Rng;
 use timer::Timer;
 
@@ -33,7 +36,7 @@ where
     D: Device,
 {
     Timer(<<D as Device>::Timer as Timer>::Error),
-    Radio(<<D as Device>::Radio as Radio>::Error),
+    Radio(RadioError),
     Rng(<<D as Device>::Rng as Rng>::Error),
     NonVolatileStore(<<D as Device>::NonVolatileStore as NonVolatileStore>::Error),
     RadioBuffer(radio_buffer::Error),

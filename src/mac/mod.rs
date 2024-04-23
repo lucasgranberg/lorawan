@@ -16,10 +16,7 @@ use self::region::{
 
 use crate::device::DeviceSpecs;
 use crate::{
-    device::radio::{
-        types::{RfConfig, TxConfig},
-        Radio,
-    },
+    device::radio::types::{RfConfig, TxConfig},
     device::{radio_buffer::RadioBuffer, rng::Rng, timer::Timer, Device},
 };
 use encoding::parser::AsPhyPayloadBytes;
@@ -44,10 +41,21 @@ macro_rules! trace {
 }
 #[cfg(feature = "defmt")]
 use defmt::trace;
+#[cfg(not(feature = "defmt"))]
+macro_rules! debug {
+    ($s:literal $(, $x:expr)* $(,)?) => {
+        {
+            let _ = ($( & $x ),*);
+        }
+    };
+}
+#[cfg(feature = "defmt")]
+use defmt::debug;
 
 use futures::pin_mut;
 use heapless::Vec;
-use lora_modulation::CodingRate;
+use lora_modulation::{BaseBandModulationParams, CodingRate};
+use lora_phy::mod_params::{PacketParams, PacketStatus};
 use types::*;
 
 #[derive(Debug)]
@@ -74,6 +82,8 @@ where
 }
 
 /// Composition of properties needed to guide LoRaWAN MAC layer processing, supporting the LoRaWAN MAC API.
+#[repr(C)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Mac<R, C>
 where
     R: Region,
@@ -264,10 +274,11 @@ where
     }
 
     fn get_rx_windows(&self, frame: Frame) -> RxWindows {
+        const ADJUST: u16 = 15;
         match frame {
             Frame::Join => RxWindows {
-                rx1_open: R::default_join_accept_delay1() - 15, // current observed duration to prepare to receive ranges from 0 to 13 ms ???
-                rx2_open: R::default_join_accept_delay2() - 15,
+                rx1_open: R::default_join_accept_delay1() - ADJUST, // current observed duration to prepare to receive ranges from 0 to 13 ms ???
+                rx2_open: R::default_join_accept_delay2() - ADJUST,
             },
             Frame::Data => {
                 let rx1_delay: u16 = self
@@ -277,8 +288,8 @@ where
                     .unwrap_or(R::default_rx_delay());
                 let rx2_delay = rx1_delay + 1000;
                 RxWindows {
-                    rx1_open: rx1_delay - 15, // current observed duration to prepare to receive ranges from 0 to 13 ms ???
-                    rx2_open: rx2_delay - 15,
+                    rx1_open: rx1_delay - ADJUST, // current observed duration to prepare to receive ranges from 0 to 13 ms ???
+                    rx2_open: rx2_delay - ADJUST,
                 }
             }
         }
@@ -340,10 +351,46 @@ where
         Ok(rf_config)
     }
 
+    async fn prepare_for_rx<D: Device>(
+        &self,
+        rf_config: &RfConfig,
+        device: &mut D,
+    ) -> Result<PacketParams, crate::Error<D>> {
+        let mdltn_params = device
+            .radio()
+            .create_modulation_params(
+                rf_config.data_rate.spreading_factor,
+                rf_config.data_rate.bandwidth,
+                rf_config.coding_rate,
+                rf_config.frequency,
+            )
+            .map_err(crate::device::Error::Radio)?;
+
+        let rx_pkt_params = device
+            .radio()
+            .create_rx_packet_params(8, false, 255, true, true, &mdltn_params)
+            .map_err(crate::device::Error::Radio)?;
+        let bb = BaseBandModulationParams::new(
+            rf_config.data_rate.spreading_factor,
+            rf_config.data_rate.bandwidth,
+            rf_config.coding_rate,
+        );
+        const PREAMBLE_SYMBOLS: u16 = 13; // 12.25
+        let num_symbols = PREAMBLE_SYMBOLS + bb.delay_in_symbols(100);
+        let rx_mode = lora_phy::RxMode::Single(num_symbols);
+
+        device
+            .radio()
+            .prepare_for_rx(rx_mode, &mdltn_params, &rx_pkt_params)
+            .await
+            .map_err(crate::device::Error::Radio)?;
+        Ok(rx_pkt_params)
+    }
+
     fn handle_downlink_macs<D: Device>(
         &mut self,
         device: &mut D,
-        rx_quality: RxQuality,
+        packet_status: PacketStatus,
         cmds: MacCommandIterator<'_, DownlinkMacCommand<'_>>,
     ) -> Result<(), crate::Error<D>> {
         let mut channel_mask = self.channel_plan.get_channel_mask();
@@ -389,7 +436,7 @@ where
                             // with a LinkADRAns indicating which command elements were accepted and which were
                             // rejected. This behavior differs from when the uplink ADR bit is set, in which case the end-
                             // device accepts or rejects the entire command.
-                            if device.adaptive_data_rate_enabled()
+                            if !device.adaptive_data_rate_enabled()
                                 || (tx_power_res.is_ok()
                                     && data_rate_res.is_ok()
                                     && channel_mask_res.is_ok())
@@ -523,7 +570,7 @@ where
         radio_buffer: &'a mut RadioBuffer<256>,
         data_rate: DR,
         channel: &C::Channel,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
+    ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
         let windows = self.get_rx_windows(frame);
 
         let open_rx1_fut = device
@@ -534,32 +581,32 @@ where
             .timer()
             .at(windows.get_open(&Window::_2) as u64)
             .map_err(crate::device::Error::Timer)?;
+        pin_mut!(open_rx1_fut);
         pin_mut!(open_rx2_fut);
-        open_rx1_fut.await;
 
-        {
-            radio_buffer.clear();
-            let rf_config = self.create_rf_config(&frame, &Window::_1, data_rate, channel)?;
-            trace!("rf config {:?}", rf_config);
-            match device.radio().rx(rf_config, 1, radio_buffer.as_raw_slice()).await {
-                Ok(ret) => {
-                    return Ok(Some(ret));
-                }
-                // Bail on error other than timeout ???
-                Err(_e) => {}
+        radio_buffer.clear();
+
+        let rf_config = self.create_rf_config(&frame, &Window::_1, data_rate, channel)?;
+        debug!("rf config RX1 {:?}", rf_config);
+        open_rx1_fut.await;
+        let packet_params = self.prepare_for_rx(&rf_config, device).await?;
+
+        match device.radio().rx(&packet_params, radio_buffer.as_raw_slice()).await {
+            Ok(ret) => {
+                return Ok(Some(ret));
             }
+            // Bail on error other than timeout ???
+            Err(_e) => {}
         }
 
+        let rf_config = self.create_rf_config(&frame, &Window::_2, data_rate, channel)?;
+        debug!("rf config RX2 {:?}", rf_config);
+        let packet_params = self.prepare_for_rx(&rf_config, device).await?;
         open_rx2_fut.await;
 
-        {
-            radio_buffer.clear();
-            let rf_config = self.create_rf_config(&frame, &Window::_2, data_rate, channel)?;
-            trace!("rf config {:?}", rf_config);
-            match device.radio().rx(rf_config, 1, radio_buffer.as_raw_slice()).await {
-                Ok(ret) => Ok(Some(ret)),
-                Err(e) => Err(crate::Error::Device(crate::device::Error::Radio(e))),
-            }
+        match device.radio().rx(&packet_params, radio_buffer.as_raw_slice()).await {
+            Ok(ret) => Ok(Some(ret)),
+            Err(e) => Err(crate::Error::Device(crate::device::Error::Radio(e))),
         }
     }
 
@@ -623,7 +670,7 @@ where
         device: &mut D,
         radio_buffer: &mut RadioBuffer<256>,
         frame: Frame,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
+    ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
         let tx_buffer = radio_buffer.clone();
 
         for trans_index in 0..self.configuration.number_of_transmissions {
@@ -636,12 +683,32 @@ where
                         chn.get_ul_frequency(),
                     );
                     let tx_config = self.create_tx_config(frame, &chn, tx_data_rate)?;
-                    trace!("tx config {:?}", tx_config);
-                    let _ms = device
+                    let mdltn_params = device
                         .radio()
-                        .tx(tx_config, tx_buffer.as_ref())
+                        .create_modulation_params(
+                            tx_config.rf.data_rate.spreading_factor,
+                            tx_config.rf.data_rate.bandwidth,
+                            tx_config.rf.coding_rate,
+                            tx_config.rf.frequency,
+                        )
+                        .map_err(crate::device::Error::Radio)?;
+                    let mut tx_pkt_params = device
+                        .radio()
+                        .create_tx_packet_params(8, false, true, false, &mdltn_params)
+                        .map_err(crate::device::Error::Radio)?;
+
+                    trace!("tx config {:?}", tx_config);
+                    device
+                        .radio()
+                        .prepare_for_tx(
+                            &mdltn_params,
+                            &mut tx_pkt_params,
+                            tx_config.pw as i32,
+                            tx_buffer.as_ref(),
+                        )
                         .await
                         .map_err(crate::device::Error::Radio)?;
+                    device.radio().tx().await.map_err(crate::device::Error::Radio)?;
                     device.timer().reset();
 
                     match self
@@ -649,7 +716,7 @@ where
                         .await
                     {
                         Ok(Some((num_read, rx_quality))) => {
-                            radio_buffer.inc(num_read);
+                            radio_buffer.inc(num_read as usize);
                             return Ok(Some((num_read, rx_quality)));
                         }
                         Ok(None) => {
@@ -717,7 +784,7 @@ where
                         trace!("app {=[u8]:02X}", session.appskey().inner().0);
                         trace!("rx1 {:?}", decrypted.dl_settings().rx1_dr_offset());
                         trace!("rx2 {:?}", decrypted.dl_settings().rx2_data_rate());
-                        trace!("rx2 {:?}", decrypted.c_f_list());
+                        // trace!("rx2 {:?}", decrypted.c_f_list());
                         self.session.replace(session);
                         self.adr_ack_cnt = 0;
 
@@ -758,9 +825,9 @@ where
         radio_buffer: &mut RadioBuffer<256>,
         data: &[u8],
         fport: u8,
-        confirmed: bool,
+        mut confirmed: bool,
         rx: Option<&mut [u8]>,
-    ) -> Result<Option<(usize, RxQuality)>, crate::Error<D>> {
+    ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
         if let Some(ref mut session_data) = self.session {
             if !session_data.is_expired() {
                 session_data.fcnt_up_increment();
@@ -773,6 +840,9 @@ where
             }
         } else {
             return Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined));
+        }
+        if !self.uplink_cmds.is_empty() {
+            confirmed = true;
         }
         self.prepare_buffer(data, fport, confirmed, radio_buffer, device)?;
         let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
@@ -814,7 +884,7 @@ where
                                     )
                                     .map_err(|_| crate::Error::<D>::Encoding)?;
 
-                                trace!("fhdr {:?}", decrypted.fhdr());
+                                //trace!("fhdr {:?}", decrypted.fhdr());
                                 self.handle_downlink_macs(
                                     device,
                                     rx_quality,
@@ -833,7 +903,7 @@ where
                                         if let Some(rx) = rx {
                                             let to_copy = core::cmp::min(rx.len(), rx_data.len());
                                             rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
-                                            Ok(Some((to_copy, rx_quality)))
+                                            Ok(Some((to_copy as u8, rx_quality)))
                                         } else {
                                             Ok(Some((0, rx_quality)))
                                         }
