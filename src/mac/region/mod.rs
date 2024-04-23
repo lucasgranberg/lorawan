@@ -2,7 +2,7 @@
 
 use lora_modulation::CodingRate;
 
-use crate::device::radio::types::Datarate;
+use crate::device::types::Datarate;
 use crate::device::Device;
 
 use self::channel_plan::dynamic::DynamicChannel;

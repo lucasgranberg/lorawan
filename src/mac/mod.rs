@@ -16,7 +16,7 @@ use self::region::{
 
 use crate::device::DeviceSpecs;
 use crate::{
-    device::radio::types::{RfConfig, TxConfig},
+    device::types::{RfConfig, TxConfig},
     device::{radio_buffer::RadioBuffer, rng::Rng, timer::Timer, Device},
 };
 use encoding::parser::AsPhyPayloadBytes;

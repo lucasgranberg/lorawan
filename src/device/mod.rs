@@ -1,10 +1,10 @@
 //! Wrapper for all necessary functionality implemented by calling code.
 
 pub mod non_volatile_store;
-pub mod radio;
 pub mod radio_buffer;
 pub mod rng;
 pub mod timer;
+pub mod types;
 
 use lora_phy::mod_params::RadioError;
 use lora_phy::mod_traits::RadioKind;

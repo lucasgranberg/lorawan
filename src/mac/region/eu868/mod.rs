@@ -4,7 +4,7 @@ use lora_modulation::{Bandwidth, CodingRate, SpreadingFactor};
 
 use super::channel_plan::dynamic::{DynamicChannel, DynamicChannelPlan};
 use super::Error;
-use crate::device::radio::types::Datarate;
+use crate::device::types::Datarate;
 use crate::mac::types::{Frame, DR};
 
 const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
