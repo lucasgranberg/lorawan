@@ -21,7 +21,7 @@ impl RxWindows {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Configuration {
     pub(crate) max_duty_cycle: f32,
-    pub(crate) tx_power: Option<u8>,
+    pub(crate) tx_power: Option<i8>,
     pub(crate) tx_data_rate: Option<DR>,
     pub(crate) rx1_data_rate_offset: Option<u8>,
     pub(crate) rx_delay: Option<u8>,

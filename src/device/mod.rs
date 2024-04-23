@@ -66,8 +66,10 @@ pub trait Device {
     fn rng(&mut self) -> &mut Self::Rng;
     /// Get the caller-supplied persistence implementation.
     fn non_volatile_store(&mut self) -> &mut Self::NonVolatileStore;
-    /// Get the caller-supplied maximum EIRP.
-    fn max_eirp() -> u8;
+    /// Get the caller-supplied maximum EIRP. None uses max for region
+    fn max_eirp() -> Option<i8> {
+        None
+    }
     /// Process the DeviceTimeAns response from a network server as directed by the caller.
     fn handle_device_time(&mut self, _seconds: u32, _nano_seconds: u32) {
         // default do nothing

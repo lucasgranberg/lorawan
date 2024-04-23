@@ -168,12 +168,16 @@ where
     }
 
     /// Get the maximum EIRP for the end device.
-    fn max_eirp<D: Device>() -> u8 {
-        min(R::max_eirp(), D::max_eirp())
+    fn max_eirp<D: Device>() -> i8 {
+        if let Some(device_max_eirp) = D::max_eirp() {
+            min(R::max_eirp(), device_max_eirp)
+        } else {
+            R::max_eirp()
+        }
     }
 
     /// Get the transmission power based on the frame type.
-    fn get_tx_pwr<D: Device>(frame: Frame, configuration: &Configuration) -> u8 {
+    fn get_tx_pwr<D: Device>(frame: Frame, configuration: &Configuration) -> i8 {
         match frame {
             Frame::Join => Self::max_eirp::<D>(),
             Frame::Data => configuration.tx_power.unwrap_or(Self::max_eirp::<D>()),
@@ -439,7 +443,8 @@ where
                         Some(battery_level) => ans.set_battery((battery_level * 253.0) as u8 + 1),
                         None => ans.set_battery(255),
                     };
-                    ans.set_margin(rx_quality.snr()).map_err(|_| crate::Error::<D>::Encoding)?;
+                    ans.set_margin(packet_status.snr as i8)
+                        .map_err(|_| crate::Error::<D>::Encoding)?;
                     Some(UplinkMacCommandCreator::DevStatusAns(ans))
                 }
                 DownlinkMacCommand::NewChannelReq(payload) => {

@@ -84,7 +84,7 @@ impl crate::mac::Region for US915 {
         DR::_8
     }
 
-    fn max_eirp() -> u8 {
+    fn max_eirp() -> i8 {
         30
     }
 
@@ -184,9 +184,16 @@ impl crate::mac::Region for US915 {
         false
     }
 
-    fn modify_dbm(tx_power: u8, cur_dbm: Option<u8>, _max_eirp: u8) -> Result<Option<u8>, Error> {
+    fn modify_dbm(tx_power: u8, cur_dbm: Option<i8>, max_eirp: i8) -> Result<Option<i8>, Error> {
         match tx_power {
-            0 => Ok(Some(Self::max_eirp() - (tx_power * 2))),
+            0..=14 => {
+                let next_dbm = max_eirp.checked_sub_unsigned(tx_power * 2);
+                if next_dbm.is_none() {
+                    Err(Error::InvalidTxPower)
+                } else {
+                    Ok(next_dbm)
+                }
+            }
             15 => Ok(cur_dbm),
             _ => Err(Error::InvalidTxPower),
         }

@@ -29,7 +29,7 @@ pub struct Datarate {
 #[derive(Debug)]
 pub struct TxConfig {
     /// Power.
-    pub pw: u8,
+    pub pw: i8,
     /// Radio signal configuration.
     pub rf: RfConfig,
 }
