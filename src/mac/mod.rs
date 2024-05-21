@@ -233,14 +233,22 @@ where
         }
     }
 
+    fn adr_ack_limit<D: DeviceSpecs>() -> u8 {
+        D::adr_ack_limit().unwrap_or(R::default_adr_ack_limit())
+    }
+
+    fn adr_ack_delay<D: DeviceSpecs>() -> u8 {
+        D::adr_ack_delay().unwrap_or(R::default_adr_ack_delay())
+    }
+
     fn adr_ack_cnt_increment(&mut self) {
         if let Some(val) = self.adr_ack_cnt.checked_add(1) {
             self.adr_ack_cnt = val
         };
     }
 
-    fn adr_back_off(&mut self) {
-        if self.adr_ack_cnt >= (R::default_adr_ack_limit() + R::default_adr_ack_delay()) {
+    fn adr_back_off<D: DeviceSpecs>(&mut self) {
+        if self.adr_ack_cnt >= (Self::adr_ack_limit::<D>() + Self::adr_ack_delay::<D>()) {
             // Start back off sequence
             if self.configuration.tx_power.is_some() {
                 // First reset tx_power to default
@@ -636,7 +644,7 @@ where
                 fctrl.set_ack();
             }
 
-            if self.adr_ack_cnt >= R::default_adr_ack_limit() {
+            if self.adr_ack_cnt >= Self::adr_ack_limit::<D>() {
                 fctrl.set_adr_ack_req();
             }
 
@@ -833,7 +841,7 @@ where
                 session_data.fcnt_up_increment();
                 if device.adaptive_data_rate_enabled() {
                     self.adr_ack_cnt_increment();
-                    self.adr_back_off();
+                    self.adr_back_off::<D>();
                 }
             } else {
                 return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));

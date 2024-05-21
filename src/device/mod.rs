@@ -86,6 +86,18 @@ pub trait DeviceSpecs {
     fn preferred_join_channel_block_index() -> usize {
         0
     }
+
+    /// get Adaptive Data Rate acknowledge delay
+    /// Set to None for default
+    fn adr_ack_delay() -> Option<u8> {
+        None
+    }
+
+    /// get Adaptive Data Rate acknowledge limit
+    /// Set to None for default
+    fn adr_ack_limit() -> Option<u8> {
+        None
+    }
 }
 /// Specification of end device-specific functionality provided by the caller.
 pub trait Device: DeviceSpecs {
