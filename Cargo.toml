@@ -19,7 +19,7 @@ futures = { version = "0.3.28", default-features = false }
 defmt = { version = "0.3", optional = true }
 serde = { version = "1.0", default-features = false, features = ["derive"], optional = true}
 lora-modulation = {version="0.1.4"}
-encoding={package="lorawan", git="https://github.com/lora-rs/lora-rs",version ="0.8.0", default-features = false, features = [
+encoding={package="lorawan",version ="0.8.0", default-features = false, features = [
     "default-crypto",
 ] }
 lora-phy={version="3.0", default-features = false}
