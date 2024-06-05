@@ -248,20 +248,21 @@ where
     }
 
     fn adr_back_off<D: DeviceSpecs>(&mut self) {
-        if self.adr_ack_cnt >= (Self::adr_ack_limit::<D>() + Self::adr_ack_delay::<D>()) {
-            // Start back off sequence
+        if self.adr_ack_cnt >= (Self::adr_ack_limit::<D>() + Self::adr_ack_delay::<D>())
+            && (self.adr_ack_cnt - Self::adr_ack_limit::<D>()) % Self::adr_ack_delay::<D>() == 0
+        {
+            // try to regain connectivity
             if self.configuration.tx_power.is_some() {
                 // First reset tx_power to default
                 self.configuration.tx_power = None;
+            }
+            // Next increse tx data rate until it reaches default
+            if self.configuration.tx_data_rate.is_some() {
+                self.configuration.tx_data_rate =
+                    R::next_adr_data_rate(self.configuration.tx_data_rate);
             } else {
-                // Next decrese tx_power until it reaches default
-                if self.configuration.tx_data_rate.is_some() {
-                    self.configuration.tx_data_rate =
-                        R::next_adr_data_rate(self.configuration.tx_data_rate);
-                } else {
-                    self.configuration.number_of_transmissions = 1;
-                    self.channel_plan.reactivate_channels();
-                }
+                self.configuration.number_of_transmissions = 1;
+                self.channel_plan.reactivate_channels();
             }
         }
     }
@@ -644,7 +645,10 @@ where
                 fctrl.set_ack();
             }
 
-            if self.adr_ack_cnt >= Self::adr_ack_limit::<D>() {
+            if self.adr_ack_cnt >= Self::adr_ack_limit::<D>()
+                && (self.configuration.tx_power.is_some()
+                    || self.configuration.tx_data_rate.is_some())
+            {
                 fctrl.set_adr_ack_req();
             }
 
@@ -840,8 +844,8 @@ where
             if !session_data.is_expired() {
                 session_data.fcnt_up_increment();
                 if device.adaptive_data_rate_enabled() {
-                    self.adr_ack_cnt_increment();
                     self.adr_back_off::<D>();
+                    self.adr_ack_cnt_increment();
                 }
             } else {
                 return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
