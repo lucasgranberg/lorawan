@@ -941,6 +941,7 @@ where
                 Ok(None)
             }
         } else {
+            //Should never end up here
             Err(crate::Error::Mac(Error::NetworkNotJoined))
         }
     }
