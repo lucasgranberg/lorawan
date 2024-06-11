@@ -79,6 +79,7 @@ pub struct Session {
     pub(crate) devaddr: DevAddr<[u8; 4]>,
     pub(crate) fcnt_up: u32,
     pub(crate) fcnt_down: u32,
+    pub(crate) adr_ack_cnt: u8,
 }
 impl Session {
     /// Creation.
@@ -102,7 +103,7 @@ impl Session {
 
     /// Creation.
     pub fn new(newskey: NewSKey, appskey: AppSKey, devaddr: DevAddr<[u8; 4]>) -> Self {
-        Self { newskey, appskey, devaddr, fcnt_up: 0, fcnt_down: 0 }
+        Self { newskey, appskey, devaddr, fcnt_up: 0, fcnt_down: 0, adr_ack_cnt: 0 }
     }
 
     /// Get the network session key.
@@ -120,11 +121,6 @@ impl Session {
         &self.devaddr
     }
 
-    /// Get the uplink frame count.
-    pub fn fcnt_up(&self) -> u32 {
-        self.fcnt_up
-    }
-
     /// Increment the uplink frame count.
     pub fn fcnt_up_increment(&mut self) {
         self.fcnt_up += 1;
@@ -132,7 +128,18 @@ impl Session {
 
     /// Has the uplink frame count reached or exceeded the limit?
     pub fn is_expired(&self) -> bool {
-        self.fcnt_up() >= 0xFFFF
+        self.fcnt_up >= 0xFFFF
+    }
+    /// clear adr ack count
+    pub fn adr_ack_cnt_clear(&mut self) {
+        self.adr_ack_cnt = 0;
+    }
+
+    /// increment adr ack count
+    pub fn adr_ack_cnt_increment(&mut self) {
+        if let Some(val) = self.adr_ack_cnt.checked_add(1) {
+            self.adr_ack_cnt = val
+        };
     }
 }
 
