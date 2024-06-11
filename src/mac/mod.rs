@@ -621,7 +621,7 @@ where
         confirmed: bool,
         radio_buffer: &mut RadioBuffer<256>,
         device: &D,
-    ) -> Result<u32, crate::Error<D>> {
+    ) -> Result<(), crate::Error<D>> {
         if let Some(session) = &self.session {
             // check if FCnt is used up
             if session.is_expired() {
@@ -665,7 +665,7 @@ where
             trace!("TX: {=[u8]:#02X}", packet);
             radio_buffer.clear();
             radio_buffer.extend_from_slice(packet).map_err(crate::device::Error::RadioBuffer)?;
-            Ok(session.fcnt_up)
+            Ok(())
         } else {
             Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined))
         }
