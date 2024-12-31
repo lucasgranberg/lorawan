@@ -1,6 +1,6 @@
 //! Properties used in LoRaWAN MAC processing.
 
-use encoding::keys::{AppEui, AppKey, AppSKey, CryptoFactory, DevEui, NewSKey};
+use encoding::keys::{AppEui, AppKey, AppSKey, CryptoFactory, DevEui, NwkSKey};
 use encoding::parser::{DecryptedJoinAcceptPayload, DevAddr, DevNonce};
 
 pub(crate) struct RxWindows {
@@ -74,7 +74,7 @@ impl Credentials {
 /// Properties maintained during a session with a network server.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Session {
-    pub(crate) newskey: NewSKey,
+    pub(crate) nwkskey: NwkSKey,
     pub(crate) appskey: AppSKey,
     pub(crate) devaddr: DevAddr<[u8; 4]>,
     pub(crate) fcnt_up: u32,
@@ -89,7 +89,7 @@ impl Session {
         credentials: &Credentials,
     ) -> Self {
         Self::new(
-            decrypt.derive_newskey(&devnonce, &credentials.app_key),
+            decrypt.derive_nwkskey(&devnonce, &credentials.app_key),
             decrypt.derive_appskey(&devnonce, &credentials.app_key),
             DevAddr::new([
                 decrypt.dev_addr().as_ref()[0],
@@ -102,13 +102,13 @@ impl Session {
     }
 
     /// Creation.
-    pub fn new(newskey: NewSKey, appskey: AppSKey, devaddr: DevAddr<[u8; 4]>) -> Self {
-        Self { newskey, appskey, devaddr, fcnt_up: 0, fcnt_down: 0, adr_ack_cnt: 0 }
+    pub fn new(nwkskey: NwkSKey, appskey: AppSKey, devaddr: DevAddr<[u8; 4]>) -> Self {
+        Self { nwkskey, appskey, devaddr, fcnt_up: 0, fcnt_down: 0, adr_ack_cnt: 0 }
     }
 
     /// Get the network session key.
-    pub fn newskey(&self) -> &NewSKey {
-        &self.newskey
+    pub fn nwkskey(&self) -> &NwkSKey {
+        &self.nwkskey
     }
 
     /// Get the application session key.

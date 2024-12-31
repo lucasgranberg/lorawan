@@ -660,7 +660,7 @@ where
                 }
             }
             let packet = phy
-                .build(data, &dyn_cmds, session.newskey(), session.appskey())
+                .build(data, &dyn_cmds, session.nwkskey(), session.appskey())
                 .map_err(|_| crate::Error::<D>::Encoding)?;
             trace!("TX: {=[u8]:#02X}", packet);
             radio_buffer.clear();
@@ -786,7 +786,7 @@ where
                             &self.credentials,
                         );
                         trace!("msg {=[u8]:02X}", decrypted.as_bytes());
-                        trace!("new {=[u8]:02X}", session.newskey().inner().0);
+                        trace!("nwk {=[u8]:02X}", session.nwkskey().inner().0);
                         trace!("app {=[u8]:02X}", session.appskey().inner().0);
                         trace!("rx1 {:?}", decrypted.dl_settings().rx1_dr_offset());
                         trace!("rx2 {:?}", decrypted.dl_settings().rx2_data_rate());
@@ -880,14 +880,14 @@ where
                             let fcnt = encrypted.fhdr().fcnt() as u32;
                             // use temporary variable for ack_next to only confirm if the message was correctly handled
                             let ack_next = encrypted.is_confirmed();
-                            if encrypted.validate_mic(session.newskey().inner(), fcnt)
+                            if encrypted.validate_mic(session.nwkskey().inner(), fcnt)
                                 && (fcnt > session.fcnt_down || fcnt == 0)
                             {
                                 session.fcnt_down = fcnt;
 
                                 let decrypted = encrypted
                                     .decrypt(
-                                        Some(session.newskey().inner()),
+                                        Some(session.nwkskey().inner()),
                                         Some(session.appskey().inner()),
                                         session.fcnt_down,
                                     )
@@ -897,14 +897,14 @@ where
                                 self.handle_downlink_macs(
                                     device,
                                     rx_quality,
-                                    (&decrypted.fhdr()).into(),
+                                    MacCommandIterator::new(decrypted.fhdr().data()),
                                 )?;
                                 let res = match decrypted.frm_payload() {
                                     FRMPayload::MACCommands(mac_cmds) => {
                                         self.handle_downlink_macs(
                                             device,
                                             rx_quality,
-                                            (&mac_cmds).into(),
+                                            MacCommandIterator::new(mac_cmds.data()),
                                         )?;
                                         Ok(Some((0, rx_quality)))
                                     }
@@ -980,7 +980,7 @@ pub(crate) mod tests {
     use crate::mac::region::channel_plan::fixed::FixedChannelPlan;
     use crate::mac::region::eu868::EU868;
     use crate::mac::region::us915::US915;
-    use crate::mac::Mac;
+    use crate::mac::{Credentials, Frame, Mac};
 
     struct DeviceMock;
     impl DeviceSpecs for DeviceMock {}
