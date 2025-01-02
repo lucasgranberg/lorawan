@@ -56,10 +56,6 @@ pub trait DeviceSpecs {
     fn max_eirp() -> Option<i8> {
         None
     }
-    /// Process the LinkADRReq request from a network server as directed by the caller.
-    fn adaptive_data_rate_enabled(&self) -> bool {
-        true
-    }
     /// Create a DevStatusAns response to a network server specifying battery level as directed by the caller.
     fn battery_level(&self) -> Option<f32> {
         None
@@ -79,12 +75,6 @@ pub trait DeviceSpecs {
     /// Get the maximum DR supported by a device as indicated by the caller.
     fn max_data_rate() -> Option<DR> {
         None
-    }
-    /// Get the preferred channel block index for join requests as indicated by the caller.
-    /// For both dynamic and fixed plans, there are a maximum of 80 channels: 10 channel blocks
-    /// of 8 channels each.  Therefore, valid indexes are 0 through 9.
-    fn preferred_join_channel_block_index() -> usize {
-        0
     }
 
     /// get Adaptive Data Rate acknowledge delay
@@ -129,6 +119,16 @@ pub trait Device: DeviceSpecs {
     /// Process the LinkCheckAns response from a network server as directed by the caller.
     fn handle_link_check(&mut self, _gateway_count: u8, _margin: u8) {
         // default do nothing
+    }
+    /// Get the preferred channel block index for join requests as indicated by the caller.
+    /// For both dynamic and fixed plans, there are a maximum of 80 channels: 10 channel blocks
+    /// of 8 channels each.  Therefore, valid indexes are 0 through 9. Defaults to 0 on None
+    fn preferred_join_channel_block_index(&self) -> Option<u8> {
+        None
+    }
+    /// Process the LinkADRReq request from a network server as directed by the caller.
+    fn adaptive_data_rate_enabled(&self) -> bool {
+        true
     }
     /// Persist information required to maintain communication with a network server through end device power cycles.
     fn persist_to_non_volatile(

@@ -1,5 +1,6 @@
 //! Specification of the functionality implemented for dynamic and fixed channel plans.
 
+use crate::device::rng::Rng;
 use crate::mac::types::*;
 use encoding::maccommands::{ChannelMask, DlChannelReqPayload, NewChannelReqPayload};
 use encoding::parser::CfList;
@@ -66,4 +67,33 @@ where
     fn validate_frequency(&self, frequency: u32) -> Result<(), Error>;
     /// Reactivate channels for ADR
     fn reactivate_channels(&mut self);
+    /// get channels to send on
+    fn get_send_channels<RNG: Rng>(
+        &self,
+        rng: &mut RNG,
+        frame: Frame,
+        preferred_channel_block: Option<u8>,
+    ) -> Result<[Option<<Self as ChannelPlan<R>>::Channel>; NUM_OF_CHANNEL_BLOCKS], RNG::Error>
+    {
+        let mut channel_block_randoms = [0x00u32; NUM_OF_CHANNEL_BLOCKS];
+        for channel_block_random in channel_block_randoms.iter_mut().take(NUM_OF_CHANNEL_BLOCKS) {
+            *channel_block_random = rng.next_u32()?;
+        }
+        let mut channels = self
+            .get_random_channels_from_blocks(channel_block_randoms)
+            .unwrap_or([None, None, None, None, None, None, None, None, None, None]);
+
+        // Place the preferred channel block first if a join request is being
+        // executed, the index is greater than zero indicating a swap is needed, and
+        // the index is valid.
+        if let Some(swap_index) = preferred_channel_block {
+            if (frame == Frame::Join)
+                && (swap_index > 0)
+                && ((swap_index as usize) < NUM_OF_CHANNEL_BLOCKS)
+            {
+                channels.swap(0, swap_index as usize);
+            }
+        }
+        Ok(channels)
+    }
 }
