@@ -31,26 +31,6 @@ use encoding::{
     maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator, SerializableMacCommand},
     parser::{parse_with_factory, DataHeader, DevNonce, FCtrl, FRMPayload, PhyPayload},
 };
-#[cfg(not(feature = "defmt"))]
-macro_rules! trace {
-    ($s:literal $(, $x:expr)* $(,)?) => {
-        {
-            let _ = ($( & $x ),*);
-        }
-    };
-}
-#[cfg(feature = "defmt")]
-use defmt::trace;
-#[cfg(not(feature = "defmt"))]
-macro_rules! debug {
-    ($s:literal $(, $x:expr)* $(,)?) => {
-        {
-            let _ = ($( & $x ),*);
-        }
-    };
-}
-#[cfg(feature = "defmt")]
-use defmt::debug;
 
 use futures::pin_mut;
 use heapless::Vec;

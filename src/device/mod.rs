@@ -17,17 +17,6 @@ use crate::mac::types::{Configuration, Credentials, Storable, DR};
 
 use self::non_volatile_store::NonVolatileStore;
 
-#[cfg(not(feature = "defmt"))]
-macro_rules! trace {
-    ($s:literal $(, $x:expr)* $(,)?) => {
-        {
-            let _ = ($( & $x ),*);
-        }
-    };
-}
-#[cfg(feature = "defmt")]
-use defmt::trace;
-
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[allow(missing_docs)]

@@ -8,6 +8,9 @@ use core::fmt::Debug;
 use device::Device;
 use mac::region;
 
+// fmt comes first
+pub(crate) mod fmt;
+
 pub mod device;
 pub mod mac;
 
