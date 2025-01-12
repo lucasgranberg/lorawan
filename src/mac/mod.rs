@@ -17,7 +17,7 @@ use self::region::{
 use crate::device::DeviceSpecs;
 use crate::{
     device::types::{RfConfig, TxConfig},
-    device::{radio_buffer::RadioBuffer, rng::Rng, timer::Timer, Device},
+    device::{rng::Rng, timer::Timer, Device},
 };
 use encoding::parser::AsPhyPayloadBytes;
 use encoding::{
@@ -51,6 +51,8 @@ pub enum Error {
     SessionExpired,
     FOptsFull,
     NoValidChannelFound,
+    Encoding(encoding::parser::Error),
+    Creator(encoding::creator::Error),
 }
 impl<D> From<Error> for super::Error<D>
 where
@@ -242,19 +244,17 @@ where
         }
     }
 
-    pub(crate) fn create_join_request<const N: usize>(&self, buf: &mut RadioBuffer<N>) {
-        buf.clear();
-
-        let mut phy: JoinRequestCreator<[u8; 23], DefaultFactory> = JoinRequestCreator::default();
+    fn create_join_request(&self, buf: &mut [u8]) -> Result<usize, crate::mac::Error> {
+        let mut phy: JoinRequestCreator<&mut [u8], DefaultFactory> =
+            JoinRequestCreator::with_options(buf, DefaultFactory).unwrap();
 
         let devnonce = self.credentials.dev_nonce;
 
         phy.set_app_eui(self.credentials.app_eui)
             .set_dev_eui(self.credentials.dev_eui)
             .set_dev_nonce(&devnonce.to_le_bytes());
-        let vec = phy.build(&self.credentials.app_key);
-
-        buf.extend_from_slice(vec).unwrap();
+        let ret = phy.build(&self.credentials.app_key);
+        Ok(ret.len())
     }
 
     fn get_rx_windows(&self, frame: Frame) -> RxWindows {
@@ -551,7 +551,7 @@ where
         &self,
         frame: Frame,
         device: &mut D,
-        radio_buffer: &mut RadioBuffer<256>,
+        buf: &mut [u8],
         data_rate: DR,
         channel: &C::Channel,
     ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
@@ -575,7 +575,7 @@ where
         open_rx1_fut.await;
         let packet_params = self.prepare_for_rx(&rf_config, device).await?;
 
-        match device.radio().rx(&packet_params, radio_buffer.as_raw_slice()).await {
+        match device.radio().rx(&packet_params, buf.as_mut()).await {
             Ok(ret) => {
                 return Ok(Some(ret));
             }
@@ -588,7 +588,7 @@ where
         let packet_params = self.prepare_for_rx(&rf_config, device).await?;
         open_rx2_fut.await;
 
-        match device.radio().rx(&packet_params, radio_buffer.as_raw_slice()).await {
+        match device.radio().rx(&packet_params, buf.as_mut()).await {
             Ok(ret) => Ok(Some(ret)),
             Err(e) => Err(crate::Error::Device(crate::device::Error::Radio(e))),
         }
@@ -599,16 +599,17 @@ where
         data: &[u8],
         fport: u8,
         confirmed: bool,
-        radio_buffer: &mut RadioBuffer<256>,
+        buf: &mut [u8],
         device: &D,
-    ) -> Result<(), crate::Error<D>> {
+    ) -> Result<usize, crate::Error<D>> {
         if let Some(session) = &self.session {
             // check if FCnt is used up
             if session.is_expired() {
                 // signal that the session is expired
                 return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
             }
-            let mut phy = DataPayloadCreator::new();
+            let mut phy = DataPayloadCreator::with_options(buf, DefaultFactory)
+                .map_err(|e| crate::Error::Mac(crate::mac::Error::Creator(e)))?;
 
             let mut fctrl = FCtrl(0x0, true);
             if device.adaptive_data_rate_enabled() {
@@ -643,22 +644,19 @@ where
                 .build(data, &dyn_cmds, session.nwkskey(), session.appskey())
                 .map_err(|_| crate::Error::<D>::Encoding)?;
             trace!("TX: {=[u8]:#02X}", packet);
-            radio_buffer.clear();
-            radio_buffer.extend_from_slice(packet).map_err(crate::device::Error::RadioBuffer)?;
-            Ok(())
+            Ok(packet.len())
         } else {
             Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined))
         }
     }
 
-    async fn send_buffer<D: Device>(
-        &self,
-        device: &mut D,
-        radio_buffer: &mut RadioBuffer<256>,
+    async fn send_buffer<'a, D: Device>(
+        &'a self,
+        device: &'a mut D,
+        buf: &mut [u8],
+        tx_len: usize,
         frame: Frame,
     ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
-        let tx_buffer = radio_buffer.clone();
-
         for trans_index in 0..self.configuration.number_of_transmissions {
             let preferred_join_channel_block = device.preferred_join_channel_block_index();
             let channels = self
@@ -694,19 +692,15 @@ where
                             &mdltn_params,
                             &mut tx_pkt_params,
                             tx_config.pw as i32,
-                            tx_buffer.as_ref(),
+                            &buf[..tx_len],
                         )
                         .await
                         .map_err(crate::device::Error::Radio)?;
                     device.radio().tx().await.map_err(crate::device::Error::Radio)?;
                     device.timer().reset();
 
-                    match self
-                        .rx_with_timeout(frame, device, radio_buffer, tx_data_rate, &chn)
-                        .await
-                    {
+                    match self.rx_with_timeout(frame, device, buf, tx_data_rate, &chn).await {
                         Ok(Some((num_read, rx_quality))) => {
-                            radio_buffer.inc(num_read as usize);
                             return Ok(Some((num_read, rx_quality)));
                         }
                         Ok(None) => {
@@ -734,9 +728,7 @@ where
                 let random = device.rng().next_u32().map_err(crate::device::Error::Rng)?;
                 let delay_ms = 1000 + (random % 1000);
                 device.timer().reset();
-                let delay_fut =
-                    device.timer().at(delay_ms as u64).map_err(crate::device::Error::Timer)?;
-                delay_fut.await;
+                device.timer().at(delay_ms as u64).await.map_err(crate::device::Error::Timer)?;
             }
         }
         Ok(None)
@@ -746,16 +738,16 @@ where
     pub async fn join<'a, D: Device>(
         &'a mut self,
         device: &'a mut D,
-        radio_buffer: &'a mut RadioBuffer<256>,
+        buf: &'a mut [u8],
     ) -> Result<(), crate::Error<D>> {
         self.credentials.incr_dev_nonce();
         device
             .persist_to_non_volatile(&self.configuration, &self.credentials)
             .map_err(crate::device::Error::NonVolatileStore)?;
-        self.create_join_request(radio_buffer);
-        let rx_res = self.send_buffer(device, radio_buffer, Frame::Join).await?;
+        let len = self.create_join_request(buf)?;
+        let rx_res = self.send_buffer(device, buf, len, Frame::Join).await?;
         if rx_res.is_some() {
-            match parse_with_factory(radio_buffer.as_mut(), DefaultFactory)
+            match parse_with_factory(buf, DefaultFactory)
                 .map_err(|_| crate::Error::<D>::Encoding)?
             {
                 PhyPayload::JoinAccept(encoding::parser::JoinAcceptPayload::Encrypted(
@@ -811,7 +803,7 @@ where
     pub async fn send<D: Device>(
         &mut self,
         device: &mut D,
-        radio_buffer: &mut RadioBuffer<256>,
+        buf: &mut [u8],
         data: &[u8],
         fport: u8,
         mut confirmed: bool,
@@ -832,8 +824,8 @@ where
         if !self.uplink_cmds.is_empty() {
             confirmed = true;
         }
-        self.prepare_buffer(data, fport, confirmed, radio_buffer, device)?;
-        let rx_res = self.send_buffer(device, radio_buffer, Frame::Data).await?;
+        let len = self.prepare_buffer(data, fport, confirmed, buf, device)?;
+        let rx_res = self.send_buffer(device, buf, len, Frame::Data).await?;
         self.ack_next = false;
         // Some commands have different ack meechanism
         // ACK needs to be sent until there is a downlink
@@ -850,7 +842,7 @@ where
         if let Some(ref mut session) = self.session {
             // Parse payload and copy into user bufer is provided
             if let Some((_, rx_quality)) = rx_res {
-                let res = parse_with_factory(radio_buffer, DefaultFactory);
+                let res = parse_with_factory(buf, DefaultFactory);
                 if let Ok(PhyPayload::Data(encoding::parser::DataPayload::Encrypted(_))) = res {
                     session.adr_ack_cnt_clear();
                 } else {

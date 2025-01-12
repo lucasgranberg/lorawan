@@ -1,7 +1,6 @@
 //! Wrapper for all necessary functionality implemented by calling code.
 
 pub mod non_volatile_store;
-pub mod radio_buffer;
 pub mod rng;
 pub mod timer;
 pub mod types;
@@ -28,7 +27,6 @@ where
     Radio(RadioError),
     Rng(<<D as Device>::Rng as Rng>::Error),
     NonVolatileStore(<<D as Device>::NonVolatileStore as NonVolatileStore>::Error),
-    RadioBuffer(radio_buffer::Error),
 }
 impl<D> From<Error<D>> for super::Error<D>
 where
