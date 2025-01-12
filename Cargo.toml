@@ -7,6 +7,7 @@ repository = "https://github.com/lucasgranberg/lorawan"
 categories = ["embedded", "no-std", "asynchronous"]
 keywords = ["lorawan", "lora", "radio", "iot", "semtech"]
 description = "Provides end device support for LoRaWAN revision 1.0.4."
+exclude = ["examples"]
 
 [lib]
 test = true
