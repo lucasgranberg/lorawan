@@ -32,7 +32,6 @@ use encoding::{
     parser::{parse_with_factory, DataHeader, DevNonce, FCtrl, FRMPayload, PhyPayload},
 };
 
-use futures::pin_mut;
 use heapless::Vec;
 use lora_modulation::{BaseBandModulationParams, CodingRate};
 use lora_phy::mod_params::{PacketParams, PacketStatus};
@@ -557,25 +556,16 @@ where
     ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
         let windows = self.get_rx_windows(frame);
 
-        let open_rx1_fut = device
-            .timer()
-            .at(windows.get_open(&Window::_1) as u64)
-            .map_err(crate::device::Error::Timer)?;
-        let open_rx2_fut = device
-            .timer()
-            .at(windows.get_open(&Window::_2) as u64)
-            .map_err(crate::device::Error::Timer)?;
-        pin_mut!(open_rx1_fut);
-        pin_mut!(open_rx2_fut);
-
-        radio_buffer.clear();
-
         let rf_config = self.create_rf_config(&frame, &Window::_1, data_rate, channel)?;
         debug!("rf config RX1 {:?}", rf_config);
-        open_rx1_fut.await;
+        device
+            .timer()
+            .at(windows.get_open(&Window::_1) as u64)
+            .await
+            .map_err(|e| crate::Error::Device(crate::device::Error::Timer(e)))?;
         let packet_params = self.prepare_for_rx(&rf_config, device).await?;
 
-        match device.radio().rx(&packet_params, buf.as_mut()).await {
+        match device.radio().rx(&packet_params, buf).await {
             Ok(ret) => {
                 return Ok(Some(ret));
             }
@@ -586,9 +576,13 @@ where
         let rf_config = self.create_rf_config(&frame, &Window::_2, data_rate, channel)?;
         debug!("rf config RX2 {:?}", rf_config);
         let packet_params = self.prepare_for_rx(&rf_config, device).await?;
-        open_rx2_fut.await;
+        device
+            .timer()
+            .at(windows.get_open(&Window::_2) as u64)
+            .await
+            .map_err(|e| crate::Error::Device(crate::device::Error::Timer(e)))?;
 
-        match device.radio().rx(&packet_params, buf.as_mut()).await {
+        match device.radio().rx(&packet_params, buf).await {
             Ok(ret) => Ok(Some(ret)),
             Err(e) => Err(crate::Error::Device(crate::device::Error::Radio(e))),
         }
