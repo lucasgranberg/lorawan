@@ -19,6 +19,7 @@ use crate::{
     device::types::{RfConfig, TxConfig},
     device::{rng::Rng, timer::Timer, Device},
 };
+use encoding::maccommands::SerializableMacCommand;
 use encoding::parser::AsPhyPayloadBytes;
 use encoding::{
     creator::{DataPayloadCreator, JoinRequestCreator},
@@ -28,7 +29,7 @@ use encoding::{
         NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
         TXParamSetupAnsCreator, UplinkMacCommandCreator,
     },
-    maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator, SerializableMacCommand},
+    maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator},
     parser::{parse_with_factory, DataHeader, DevNonce, FCtrl, FRMPayload, PhyPayload},
 };
 
@@ -244,15 +245,14 @@ where
     }
 
     fn create_join_request(&self, buf: &mut [u8]) -> Result<usize, crate::mac::Error> {
-        let mut phy: JoinRequestCreator<&mut [u8], DefaultFactory> =
-            JoinRequestCreator::with_options(buf, DefaultFactory).unwrap();
+        let mut phy = JoinRequestCreator::new(buf).unwrap();
 
         let devnonce = self.credentials.dev_nonce;
 
         phy.set_app_eui(self.credentials.app_eui)
             .set_dev_eui(self.credentials.dev_eui)
             .set_dev_nonce(&devnonce.to_le_bytes());
-        let ret = phy.build(&self.credentials.app_key);
+        let ret = phy.build(&self.credentials.app_key, &DefaultFactory);
         Ok(ret.len())
     }
 
@@ -602,7 +602,7 @@ where
                 // signal that the session is expired
                 return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
             }
-            let mut phy = DataPayloadCreator::with_options(buf, DefaultFactory)
+            let mut phy = DataPayloadCreator::new(buf)
                 .map_err(|e| crate::Error::Mac(crate::mac::Error::Creator(e)))?;
 
             let mut fctrl = FCtrl(0x0, true);
@@ -628,14 +628,20 @@ where
                 .set_dev_addr(*session.devaddr())
                 .set_fcnt(session.fcnt_up);
 
-            let mut dyn_cmds: Vec<&dyn SerializableMacCommand, 8> = Vec::new();
+            let mut dyn_cmds = [0u8; 15];
+            let mut pos = 0usize;
             for cmd in self.uplink_cmds.iter() {
-                if let Err(_e) = dyn_cmds.push(cmd) {
-                    panic!("dyn_cmds too small compared to cmds")
-                }
+                dyn_cmds[pos..cmd.len()].copy_from_slice(cmd.build());
+                pos += cmd.len();
             }
+            // let mut dyn_cmds: Vec<&dyn SerializableMacCommand, 8> = Vec::new();
+            // for cmd in self.uplink_cmds.iter() {
+            //     if let Err(_e) = dyn_cmds.push(cmd) {
+            //         panic!("dyn_cmds too small compared to cmds")
+            //     }
+            // }
             let packet = phy
-                .build(data, &dyn_cmds, session.nwkskey(), session.appskey())
+                .build(data, &dyn_cmds, session.nwkskey(), session.appskey(), &DefaultFactory)
                 .map_err(|_| crate::Error::<D>::Encoding)?;
             trace!("TX: {=[u8]:#02X}", packet);
             Ok(packet.len())
@@ -665,6 +671,7 @@ where
                         chn.get_ul_frequency(),
                     );
                     let tx_config = self.create_tx_config(frame, &chn, tx_data_rate)?;
+                    info!("tx config {:?}", tx_config);
                     let mdltn_params = device
                         .radio()
                         .create_modulation_params(
@@ -679,7 +686,6 @@ where
                         .create_tx_packet_params(8, false, true, false, &mdltn_params)
                         .map_err(crate::device::Error::Radio)?;
 
-                    trace!("tx config {:?}", tx_config);
                     device
                         .radio()
                         .prepare_for_tx(
@@ -692,6 +698,7 @@ where
                         .map_err(crate::device::Error::Radio)?;
                     device.radio().tx().await.map_err(crate::device::Error::Radio)?;
                     device.timer().reset();
+                    info!("TX complete");
 
                     match self.rx_with_timeout(frame, device, buf, tx_data_rate, &chn).await {
                         Ok(Some((num_read, rx_quality))) => {
@@ -739,9 +746,11 @@ where
             .persist_to_non_volatile(&self.configuration, &self.credentials)
             .map_err(crate::device::Error::NonVolatileStore)?;
         let len = self.create_join_request(buf)?;
+        info!("{:?}", buf[..len]);
+
         let rx_res = self.send_buffer(device, buf, len, Frame::Join).await?;
-        if rx_res.is_some() {
-            match parse_with_factory(buf, DefaultFactory)
+        if let Some((len, _)) = rx_res {
+            match parse_with_factory(&mut buf[..len as usize], DefaultFactory)
                 .map_err(|_| crate::Error::<D>::Encoding)?
             {
                 PhyPayload::JoinAccept(encoding::parser::JoinAcceptPayload::Encrypted(
@@ -821,7 +830,7 @@ where
         let len = self.prepare_buffer(data, fport, confirmed, buf, device)?;
         let rx_res = self.send_buffer(device, buf, len, Frame::Data).await?;
         self.ack_next = false;
-        // Some commands have different ack meechanism
+        // Some commands have different ack mechanism
         // ACK needs to be sent until there is a downlink
         self.uplink_cmds.retain(|cmd| {
             matches!(

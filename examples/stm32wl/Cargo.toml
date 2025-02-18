@@ -2,7 +2,6 @@
 name = "lorawan-pilot"
 version = "0.1.0"
 edition = "2021"
-test = false
 
 [profile.dev]
 debug = true
@@ -11,17 +10,14 @@ opt-level = "z"
 
 
 [dependencies]
-lorawan = { version = "0.1.0", path = "../../", features = [
-    "defmt",
-    "serde",
-] }
+lorawan = { version = "0.1.0", path = "../../", features = ["defmt", "serde"] }
 
 embassy-sync = { version = "0.6", features = ["defmt"] }
 embassy-executor = { version = "0.7", features = [
     "defmt",
     "arch-cortex-m",
     "executor-thread",
-    "executor-interrupt"
+    "executor-interrupt",
 ] }
 embassy-time = { version = "0.4", features = [
     "defmt",
@@ -59,7 +55,7 @@ futures = { version = "0.3.25", default-features = false, features = [
 ] }
 heapless = { version = "0.8", default-features = false }
 rand_core = { version = "0.6.2", default-features = false }
-lora-phy = { git = "https://github.com/lora-rs/lora-rs.git", rev = "3dac96484d97636c61c667e4c4ff4d80c02b11b0", default-features = false }
+lora-phy = { git = "https://github.com/lora-rs/lora-rs.git", rev = "a3206231f206846991369cbe2e4f86aa60e10507", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 postcard = { version = "1.1", default-features = false }
 
@@ -72,4 +68,3 @@ embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "eaa4
 embassy-futures = { git = "https://github.com/embassy-rs/embassy.git", rev = "eaa44c3d3ff71fe3f6c3c343843272bea8b08cf3" }
 embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy.git", rev = "eaa44c3d3ff71fe3f6c3c343843272bea8b08cf3" }
 embassy-hal-internal = { git = "https://github.com/embassy-rs/embassy.git", rev = "eaa44c3d3ff71fe3f6c3c343843272bea8b08cf3" }
-

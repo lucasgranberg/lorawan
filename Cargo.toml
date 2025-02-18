@@ -18,16 +18,24 @@ heapless = "0.8.0"
 as-slice = "0.2"
 futures = { version = "0.3.31", default-features = false }
 defmt = { version = "0.3", optional = true }
-serde = { version = "1.0", default-features = false, features = ["derive"], optional = true}
-lora-modulation = {git="https://github.com/lora-rs/lora-rs.git",rev="3dac96484d97636c61c667e4c4ff4d80c02b11b0"}
-encoding={package = "lorawan", git="https://github.com/lora-rs/lora-rs.git",rev="3dac96484d97636c61c667e4c4ff4d80c02b11b0", default-features = false, features = [
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+], optional = true }
+lora-modulation = { path = "../lora-rs/lora-modulation" }
+encoding = { package = "lorawan", path = "../lora-rs/lorawan-encoding", default-features = false, features = [
     "default-crypto",
 ] }
-lora-phy={git="https://github.com/lora-rs/lora-rs.git",rev="3dac96484d97636c61c667e4c4ff4d80c02b11b0", default-features = false}
+lora-phy = { path = "../lora-rs/lora-phy", default-features = false }
 
 [dev-dependencies]
 rand = "0.8"
 [features]
-default = ["defmt","serde"]
-defmt = ["dep:defmt","lora-modulation/defmt-03","encoding/defmt-03","lora-phy/defmt-03","heapless/defmt-03"]
+default = ["defmt", "serde"]
+defmt = [
+    "dep:defmt",
+    "lora-modulation/defmt-03",
+    "encoding/defmt-03",
+    "lora-phy/defmt-03",
+    "heapless/defmt-03",
+]
 serde = ["dep:serde"]

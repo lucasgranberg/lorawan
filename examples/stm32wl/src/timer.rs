@@ -24,8 +24,7 @@ impl ::lorawan::device::timer::Timer for LoraTimer {
     }
 
     async fn at(&self, millis: u64) -> Result<(), Self::Error> {
-        let start = self.start;
-        let fut = Timer::at(start + Duration::from_millis(millis)).await;
+        let fut = Timer::at(self.start + Duration::from_millis(millis)).await;
         Ok(fut)
     }
 }
