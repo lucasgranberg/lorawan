@@ -1,6 +1,5 @@
 //! API for the LoRaWAN MAC layer using device properties specified by the caller.
 
-use core::f32::consts::E;
 use core::fmt::Debug;
 
 pub mod region;
@@ -29,7 +28,7 @@ use encoding::{
         NewChannelAnsCreator, RXParamSetupAnsCreator, RXTimingSetupAnsCreator,
         TXParamSetupAnsCreator, UplinkMacCommandCreator,
     },
-    maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator, SerializableMacCommand},
+    maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator},
     parser::{parse_with_factory, DataHeader, DevNonce, FCtrl, FRMPayload, PhyPayload},
 };
 
@@ -46,6 +45,7 @@ pub enum Error {
     InvalidMic,
     InvalidDevAddr,
     InvalidPayloadType,
+    InvalidFcnt,
     NoResponse,
     NetworkNotJoined,
     SessionExpired,
@@ -766,14 +766,12 @@ where
                         trace!("msg {=[u8]:02X}", decrypted.as_bytes());
                         trace!("nwk {=[u8]:02X}", session.nwkskey().inner().0);
                         trace!("app {=[u8]:02X}", session.appskey().inner().0);
-                        trace!("rx1 {:?}", decrypted.dl_settings().rx1_dr_offset());
-                        trace!("rx2 {:?}", decrypted.dl_settings().rx2_data_rate());
-                        // trace!("rx2 {:?}", decrypted.c_f_list());
+                        // trace!("dl_settings {:?}", decrypted.dl_settings());
+                        // trace!("rx_delay {:?}", decrypted.rx_delay());
                         self.session.replace(session);
 
                         let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
                             Self::validate_dl_settings::<D>(decrypted.dl_settings());
-                        trace!("{}{}", rx1_data_rate_offset_ack, rx2_data_rate_ack);
                         if rx1_data_rate_offset_ack && rx2_data_rate_ack {
                             self.handle_dl_settings(decrypted.dl_settings())?
                         }
@@ -849,8 +847,8 @@ where
         // Handle received data
         if let Some(ref mut session) = self.session {
             // Parse payload and copy into user bufer is provided
-            if let Some((_, rx_quality)) = rx_res {
-                let res = parse_with_factory(buf, DefaultFactory);
+            if let Some((len, rx_quality)) = rx_res {
+                let res = parse_with_factory(&mut buf[..len as usize], DefaultFactory);
                 if let Ok(PhyPayload::Data(encoding::parser::DataPayload::Encrypted(_))) = res {
                     session.adr_ack_cnt_clear();
                 } else {
@@ -858,64 +856,64 @@ where
                 }
                 match res {
                     Ok(PhyPayload::Data(encoding::parser::DataPayload::Encrypted(encrypted))) => {
-                        if session.devaddr() == &encrypted.fhdr().dev_addr() {
-                            // clear all uplink cmds here after successfull downlink
-                            self.uplink_cmds.clear();
-                            let fcnt = encrypted.fhdr().fcnt() as u32;
-                            // use temporary variable for ack_next to only confirm if the message was correctly handled
-                            let ack_next = encrypted.is_confirmed();
-                            if encrypted.validate_mic(session.nwkskey().inner(), fcnt)
-                                && (fcnt > session.fcnt_down || fcnt == 0)
-                            {
-                                session.fcnt_down = fcnt;
+                        if session.devaddr() != &encrypted.fhdr().dev_addr() {
+                            return Err(crate::Error::Mac(crate::mac::Error::InvalidDevAddr));
+                        }
+                        // clear all uplink cmds here after successfull downlink
+                        self.uplink_cmds.clear();
+                        let fcnt = encrypted.fhdr().fcnt() as u32;
+                        // use temporary variable for ack_next to only confirm if the message was correctly handled
+                        let ack_next = encrypted.is_confirmed();
+                        if !encrypted.validate_mic(session.nwkskey().inner(), fcnt) {
+                            return Err(crate::Error::Mac(crate::mac::Error::InvalidMic));
+                        }
+                        if !(fcnt > session.fcnt_down || fcnt == 0) {
+                            trace!("Invalid fcnt {} {}", fcnt, session.fcnt_down);
+                            return Err(crate::Error::Mac(crate::mac::Error::InvalidFcnt));
+                        }
+                        session.fcnt_down = fcnt;
 
-                                let decrypted = encrypted
-                                    .decrypt(
-                                        Some(session.nwkskey().inner()),
-                                        Some(session.appskey().inner()),
-                                        session.fcnt_down,
-                                    )
-                                    .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?;
+                        let decrypted = encrypted
+                            .decrypt(
+                                Some(session.nwkskey().inner()),
+                                Some(session.appskey().inner()),
+                                session.fcnt_down,
+                            )
+                            .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?;
 
-                                //trace!("fhdr {:?}", decrypted.fhdr());
+                        //trace!("fhdr {:?}", decrypted.fhdr());
+                        self.handle_downlink_macs(
+                            device,
+                            rx_quality,
+                            MacCommandIterator::new(decrypted.fhdr().data()),
+                        )?;
+                        let res = match decrypted.frm_payload() {
+                            FRMPayload::MACCommands(mac_cmds) => {
                                 self.handle_downlink_macs(
                                     device,
                                     rx_quality,
-                                    MacCommandIterator::new(decrypted.fhdr().data()),
+                                    MacCommandIterator::new(mac_cmds.data()),
                                 )?;
-                                let res = match decrypted.frm_payload() {
-                                    FRMPayload::MACCommands(mac_cmds) => {
-                                        self.handle_downlink_macs(
-                                            device,
-                                            rx_quality,
-                                            MacCommandIterator::new(mac_cmds.data()),
-                                        )?;
-                                        Ok(Some((0, rx_quality)))
-                                    }
-                                    FRMPayload::Data(rx_data) => {
-                                        if let Some(rx) = rx {
-                                            let to_copy = core::cmp::min(rx.len(), rx_data.len());
-                                            rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
-                                            Ok(Some((to_copy as u8, rx_quality)))
-                                        } else {
-                                            Ok(Some((0, rx_quality)))
-                                        }
-                                    }
-                                    FRMPayload::None => Ok(Some((0, rx_quality))),
-                                };
-                                device
-                                    .persist_to_non_volatile(&self.configuration, &self.credentials)
-                                    .map_err(crate::device::Error::NonVolatileStore)?;
-                                if res.is_ok() {
-                                    self.ack_next = ack_next;
-                                }
-                                res
-                            } else {
-                                Err(crate::Error::Mac(crate::mac::Error::InvalidMic))
+                                Ok(Some((0, rx_quality)))
                             }
-                        } else {
-                            Err(crate::Error::Mac(crate::mac::Error::InvalidDevAddr))
+                            FRMPayload::Data(rx_data) => {
+                                if let Some(rx) = rx {
+                                    let to_copy = core::cmp::min(rx.len(), rx_data.len());
+                                    rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
+                                    Ok(Some((to_copy as u8, rx_quality)))
+                                } else {
+                                    Ok(Some((0, rx_quality)))
+                                }
+                            }
+                            FRMPayload::None => Ok(Some((0, rx_quality))),
+                        };
+                        device
+                            .persist_to_non_volatile(&self.configuration, &self.credentials)
+                            .map_err(crate::device::Error::NonVolatileStore)?;
+                        if res.is_ok() {
+                            self.ack_next = ack_next;
                         }
+                        res
                     }
                     Ok(_) => Err(crate::Error::Mac(crate::mac::Error::InvalidPayloadType)),
                     Err(e) => Err(crate::Error::Mac(Error::Encoding(e))),
