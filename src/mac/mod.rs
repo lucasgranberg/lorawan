@@ -1,5 +1,6 @@
 //! API for the LoRaWAN MAC layer using device properties specified by the caller.
 
+use core::f32::consts::E;
 use core::fmt::Debug;
 
 pub mod region;
@@ -52,6 +53,7 @@ pub enum Error {
     NoValidChannelFound,
     Encoding(encoding::parser::Error),
     Creator(encoding::creator::Error),
+    MacCommandCreator(encoding::maccommandcreator::Error),
 }
 impl<D> From<Error> for super::Error<D>
 where
@@ -244,15 +246,15 @@ where
     }
 
     fn create_join_request(&self, buf: &mut [u8]) -> Result<usize, crate::mac::Error> {
-        let mut phy: JoinRequestCreator<&mut [u8], DefaultFactory> =
-            JoinRequestCreator::with_options(buf, DefaultFactory).unwrap();
+        let mut join_request = JoinRequestCreator::new(buf).unwrap();
 
         let devnonce = self.credentials.dev_nonce;
 
-        phy.set_app_eui(self.credentials.app_eui)
+        join_request
+            .set_app_eui(self.credentials.app_eui)
             .set_dev_eui(self.credentials.dev_eui)
             .set_dev_nonce(&devnonce.to_le_bytes());
-        let ret = phy.build(&self.credentials.app_key);
+        let ret = join_request.build(&self.credentials.app_key, &DefaultFactory);
         Ok(ret.len())
     }
 
@@ -474,7 +476,7 @@ where
                         None => ans.set_battery(255),
                     };
                     ans.set_margin(packet_status.snr as i8)
-                        .map_err(|_| crate::Error::<D>::Encoding)?;
+                        .map_err(|e| crate::Error::<D>::Mac(Error::MacCommandCreator(e)))?;
                     Some(UplinkMacCommandCreator::DevStatusAns(ans))
                 }
                 DownlinkMacCommand::NewChannelReq(payload) => {
@@ -588,25 +590,25 @@ where
         }
     }
 
-    fn prepare_buffer<D: Device>(
+    fn prepare_buffer<D: DeviceSpecs>(
         &mut self,
         data: &[u8],
         fport: u8,
         confirmed: bool,
         buf: &mut [u8],
-        device: &D,
-    ) -> Result<usize, crate::Error<D>> {
+        adr: bool,
+    ) -> Result<usize, crate::mac::Error> {
         if let Some(session) = &self.session {
             // check if FCnt is used up
             if session.is_expired() {
                 // signal that the session is expired
-                return Err(crate::Error::Mac(crate::mac::Error::SessionExpired));
+                return Err(crate::mac::Error::SessionExpired);
             }
-            let mut phy = DataPayloadCreator::with_options(buf, DefaultFactory)
-                .map_err(|e| crate::Error::Mac(crate::mac::Error::Creator(e)))?;
+            let mut phy =
+                DataPayloadCreator::new(buf).map_err(|e| crate::mac::Error::Creator(e))?;
 
             let mut fctrl = FCtrl(0x0, true);
-            if device.adaptive_data_rate_enabled() {
+            if adr {
                 fctrl.set_adr();
             }
 
@@ -628,19 +630,25 @@ where
                 .set_dev_addr(*session.devaddr())
                 .set_fcnt(session.fcnt_up);
 
-            let mut dyn_cmds: Vec<&dyn SerializableMacCommand, 8> = Vec::new();
+            let mut dyn_cmds = [0u8; 255];
+            let mut pos = 0usize;
             for cmd in self.uplink_cmds.iter() {
-                if let Err(_e) = dyn_cmds.push(cmd) {
-                    panic!("dyn_cmds too small compared to cmds")
-                }
+                dyn_cmds[pos..pos + cmd.len()].copy_from_slice(cmd.build());
+                pos = pos + cmd.len();
             }
             let packet = phy
-                .build(data, &dyn_cmds, session.nwkskey(), session.appskey())
-                .map_err(|_| crate::Error::<D>::Encoding)?;
+                .build(
+                    data,
+                    &dyn_cmds[..pos],
+                    session.nwkskey(),
+                    session.appskey(),
+                    &DefaultFactory,
+                )
+                .map_err(|e| crate::mac::Error::Creator(e))?;
             trace!("TX: {=[u8]:#02X}", packet);
             Ok(packet.len())
         } else {
-            Err(crate::Error::Mac(crate::mac::Error::NetworkNotJoined))
+            Err(crate::mac::Error::NetworkNotJoined)
         }
     }
 
@@ -740,9 +748,9 @@ where
             .map_err(crate::device::Error::NonVolatileStore)?;
         let len = self.create_join_request(buf)?;
         let rx_res = self.send_buffer(device, buf, len, Frame::Join).await?;
-        if rx_res.is_some() {
-            match parse_with_factory(buf, DefaultFactory)
-                .map_err(|_| crate::Error::<D>::Encoding)?
+        if let Some((rx_len, _)) = rx_res {
+            match parse_with_factory(&mut buf[..rx_len as usize], DefaultFactory)
+                .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?
             {
                 PhyPayload::JoinAccept(encoding::parser::JoinAcceptPayload::Encrypted(
                     encrypted,
@@ -818,7 +826,13 @@ where
         if !self.uplink_cmds.is_empty() {
             confirmed = true;
         }
-        let len = self.prepare_buffer(data, fport, confirmed, buf, device)?;
+        let len = self.prepare_buffer::<D>(
+            data,
+            fport,
+            confirmed,
+            buf,
+            device.adaptive_data_rate_enabled(),
+        )?;
         let rx_res = self.send_buffer(device, buf, len, Frame::Data).await?;
         self.ack_next = false;
         // Some commands have different ack meechanism
@@ -861,7 +875,7 @@ where
                                         Some(session.appskey().inner()),
                                         session.fcnt_down,
                                     )
-                                    .map_err(|_| crate::Error::<D>::Encoding)?;
+                                    .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?;
 
                                 //trace!("fhdr {:?}", decrypted.fhdr());
                                 self.handle_downlink_macs(
@@ -904,7 +918,7 @@ where
                         }
                     }
                     Ok(_) => Err(crate::Error::Mac(crate::mac::Error::InvalidPayloadType)),
-                    Err(_) => Err(crate::Error::Encoding),
+                    Err(e) => Err(crate::Error::Mac(Error::Encoding(e))),
                 }
             } else if confirmed {
                 Err(crate::Error::Mac(Error::NoResponse))
@@ -922,6 +936,11 @@ where
 pub(crate) mod tests {
     use core::convert::Infallible;
 
+    use encoding::keys::{AppSKey, NwkSKey};
+    use encoding::maccommands::{LinkADRAnsPayload, UplinkMacCommandCreator};
+    use encoding::parser::DevAddr;
+
+    use super::*;
     use crate::device::rng::Rng;
     use crate::device::DeviceSpecs;
     use crate::mac::region::channel_plan::dynamic::DynamicChannelPlan;
@@ -1023,5 +1042,33 @@ pub(crate) mod tests {
         assert!(channels_us915[7].is_some());
         assert!(channels_us915[8].is_some());
         assert!(channels_us915[9].is_none());
+    }
+    #[test]
+    fn prepare_buffer() {
+        let mut mac_eu868 = Mac::<EU868, DynamicChannelPlan<EU868>>::new(
+            Default::default(),
+            Credentials::new([0u8; 8], [0u8; 8], [0u8; 16]),
+        );
+        mac_eu868.session = Some(Session {
+            nwkskey: NwkSKey::from([1u8; 16]),
+            appskey: AppSKey::from([1u8; 16]),
+            devaddr: DevAddr::from([1u8; 4]),
+            fcnt_up: 0,
+            fcnt_down: 0,
+            adr_ack_cnt: 0,
+        });
+        let mut ans = LinkADRAnsCreator::new();
+        ans.set_tx_power_ack(true);
+        ans.set_data_rate_ack(true);
+        ans.set_channel_mask_ack(true);
+        mac_eu868.uplink_cmds.push(UplinkMacCommandCreator::LinkADRAns(ans));
+        let mut buf = [0u8; 255];
+        let len = mac_eu868
+            .prepare_buffer::<DeviceSpecsMock>(&[1, 2, 3], 1, true, &mut buf, true)
+            .unwrap();
+        assert_eq!(
+            &buf[..len],
+            &[128, 1, 1, 1, 1, 130, 0, 0, 3, 7, 1, 138, 146, 99, 14, 206, 51, 173]
+        );
     }
 }

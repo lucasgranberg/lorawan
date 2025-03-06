@@ -24,5 +24,4 @@ where
     Device(device::Error<D>),
     Region(region::Error),
     Mac(mac::Error),
-    Encoding,
 }
