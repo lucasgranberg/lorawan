@@ -165,8 +165,8 @@ where
                 ul_frequency: payload.frequency().value(),
                 dl_frequency: payload.frequency().value(),
                 ul_data_rate_range: (
-                    DR::try_from(payload.data_rate_range().min_data_rate()).unwrap(),
-                    DR::try_from(payload.data_rate_range().max_data_rate()).unwrap(),
+                    DR::try_from(payload.data_rate_range().unwrap().min_data_rate()).unwrap(),
+                    DR::try_from(payload.data_rate_range().unwrap().max_data_rate()).unwrap(),
                 ),
             });
             Ok(())

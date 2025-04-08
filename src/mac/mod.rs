@@ -19,7 +19,7 @@ use crate::{
     device::types::{RfConfig, TxConfig},
     device::{rng::Rng, timer::Timer, Device},
 };
-use encoding::parser::AsPhyPayloadBytes;
+use encoding::parser::{AsPhyPayloadBytes, DecryptedDataPayload, FRMMacCommands};
 use encoding::{
     creator::{DataPayloadCreator, JoinRequestCreator},
     default_crypto::DefaultFactory,
@@ -54,6 +54,7 @@ pub enum Error {
     Encoding(encoding::parser::Error),
     Creator(encoding::creator::Error),
     MacCommandCreator(encoding::maccommandcreator::Error),
+    MacCommand(encoding::maccommands::Error),
 }
 impl<D> From<Error> for super::Error<D>
 where
@@ -147,7 +148,11 @@ where
 
     /// Is the uplink data rate within range for the given end device?
     fn validate_data_rate<D: DeviceSpecs>(dr: u8) -> bool {
-        DR::try_from(dr).unwrap().in_range((Self::min_data_rate::<D>(), Self::max_data_rate::<D>()))
+        if let Ok(dr) = DR::try_from(dr) {
+            dr.in_range((Self::min_data_rate::<D>(), Self::max_data_rate::<D>()))
+        } else {
+            false
+        }
     }
 
     /// Are the downlink data rate settings in range for the given end device?
@@ -483,12 +488,14 @@ where
                     if (payload.channel_index() as usize) < R::default_channels(true) {
                         None //silently ignore if default channel
                     } else {
-                        let data_rate_range_ack = Self::validate_data_rate::<D>(
-                            payload.data_rate_range().min_data_rate(),
-                        ) && Self::validate_data_rate::<D>(
-                            payload.data_rate_range().max_data_rate(),
-                        ) && payload.data_rate_range().min_data_rate()
-                            < payload.data_rate_range().max_data_rate();
+                        let data_rate_range = payload
+                            .data_rate_range()
+                            .map_err(|e| crate::Error::<D>::Mac(Error::MacCommand(e)))?;
+                        let data_rate_range_ack =
+                            Self::validate_data_rate::<D>(data_rate_range.min_data_rate())
+                                && Self::validate_data_rate::<D>(data_rate_range.max_data_rate())
+                                && data_rate_range.min_data_rate()
+                                    < data_rate_range.max_data_rate();
 
                         let channel_frequency_ack = payload.frequency().value() == 0
                             || Self::validate_frequency::<D>(payload.frequency().value());
@@ -700,6 +707,7 @@ where
                         .map_err(crate::device::Error::Radio)?;
                     device.radio().tx().await.map_err(crate::device::Error::Radio)?;
                     device.timer().reset();
+                    trace!("SENT");
 
                     match self.rx_with_timeout(frame, device, buf, tx_data_rate, &chn).await {
                         Ok(Some((num_read, rx_quality))) => {
@@ -759,8 +767,7 @@ where
                     if decrypted.validate_mic(&self.credentials.app_key) {
                         let session = Session::derive_new(
                             &decrypted,
-                            DevNonce::<[u8; 2]>::new(self.credentials.dev_nonce.to_le_bytes())
-                                .unwrap(),
+                            self.credentials.dev_nonce.into(),
                             &self.credentials,
                         );
                         trace!("msg {=[u8]:02X}", decrypted.as_bytes());
@@ -800,15 +807,14 @@ where
     }
 
     /// Send data from the end device to a network server on an established session.
-    pub async fn send<D: Device>(
+    pub async fn send<'a, D: Device>(
         &mut self,
         device: &mut D,
-        buf: &mut [u8],
+        buf: &'a mut [u8],
         data: &[u8],
         fport: u8,
         mut confirmed: bool,
-        rx: Option<&mut [u8]>,
-    ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
+    ) -> Result<Option<(FRMPayload<'a>, PacketStatus)>, crate::Error<D>> {
         if let Some(ref mut session) = self.session {
             if !session.is_expired() {
                 session.fcnt_up_increment();
@@ -887,33 +893,20 @@ where
                             rx_quality,
                             MacCommandIterator::new(decrypted.fhdr().data()),
                         )?;
-                        let res = match decrypted.frm_payload() {
-                            FRMPayload::MACCommands(mac_cmds) => {
-                                self.handle_downlink_macs(
-                                    device,
-                                    rx_quality,
-                                    MacCommandIterator::new(mac_cmds.data()),
-                                )?;
-                                Ok(Some((0, rx_quality)))
-                            }
-                            FRMPayload::Data(rx_data) => {
-                                if let Some(rx) = rx {
-                                    let to_copy = core::cmp::min(rx.len(), rx_data.len());
-                                    rx[0..to_copy].copy_from_slice(&rx_data[0..to_copy]);
-                                    Ok(Some((to_copy as u8, rx_quality)))
-                                } else {
-                                    Ok(Some((0, rx_quality)))
-                                }
-                            }
-                            FRMPayload::None => Ok(Some((0, rx_quality))),
-                        };
+                        let payload = frm_payload(decrypted);
+                        if let FRMPayload::MACCommands(mac_cmds) = &payload {
+                            self.handle_downlink_macs(
+                                device,
+                                rx_quality,
+                                MacCommandIterator::new(mac_cmds.data()),
+                            )?;
+                        }
                         device
                             .persist_to_non_volatile(&self.configuration, &self.credentials)
                             .map_err(crate::device::Error::NonVolatileStore)?;
-                        if res.is_ok() {
-                            self.ack_next = ack_next;
-                        }
-                        res
+
+                        self.ack_next = ack_next;
+                        Ok(Some((payload, rx_quality)))
                     }
                     Ok(_) => Err(crate::Error::Mac(crate::mac::Error::InvalidPayloadType)),
                     Err(e) => Err(crate::Error::Mac(Error::Encoding(e))),
@@ -929,7 +922,25 @@ where
         }
     }
 }
-
+fn frm_payload<'a>(payload: DecryptedDataPayload<&'a mut [u8]>) -> FRMPayload<'a> {
+    let fhdr_length = payload.fhdr_length();
+    let fport = payload.f_port();
+    let uplink = payload.is_uplink();
+    let data = payload.to_inner();
+    let len = data.len();
+    //we have more bytes than fhdr + fport
+    if len < fhdr_length + 6 {
+        FRMPayload::None
+    } else if fport != Some(0) {
+        // the size guarantees the existance of f_port
+        FRMPayload::Data(&data[(1 + fhdr_length + 1)..(len - 4)])
+    } else {
+        FRMPayload::MACCommands(FRMMacCommands::new(
+            &data[(1 + fhdr_length + 1)..(len - 4)],
+            uplink,
+        ))
+    }
+}
 #[cfg(test)]
 pub(crate) mod tests {
     use core::convert::Infallible;

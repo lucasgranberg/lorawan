@@ -697,9 +697,28 @@ checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
 [[package]]
 name = "lora-modulation"
 version = "0.1.5"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
+source = "git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0#31bd7a798bf35ba522a7e524c26b8459a2f834f0"
 dependencies = [
  "defmt",
+]
+
+[[package]]
+name = "lora-modulation"
+version = "0.1.5"
+source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
+
+[[package]]
+name = "lora-phy"
+version = "3.0.2-alpha"
+source = "git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0#31bd7a798bf35ba522a7e524c26b8459a2f834f0"
+dependencies = [
+ "defmt",
+ "document-features",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "lora-modulation 0.1.5 (git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0)",
+ "lorawan-device",
+ "num-traits",
 ]
 
 [[package]]
@@ -707,12 +726,10 @@ name = "lora-phy"
 version = "3.0.2-alpha"
 source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
 dependencies = [
- "defmt",
  "document-features",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
- "lora-modulation",
- "lorawan-device",
+ "lora-modulation 0.1.5 (git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0)",
  "num-traits",
 ]
 
@@ -724,8 +741,8 @@ dependencies = [
  "defmt",
  "futures",
  "heapless",
- "lora-modulation",
- "lora-phy",
+ "lora-modulation 0.1.5 (git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0)",
+ "lora-phy 3.0.2-alpha (git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0)",
  "lorawan 0.9.1",
  "serde",
 ]
@@ -733,7 +750,7 @@ dependencies = [
 [[package]]
 name = "lorawan"
 version = "0.9.1"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
+source = "git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0#31bd7a798bf35ba522a7e524c26b8459a2f834f0"
 dependencies = [
  "aes",
  "cmac",
@@ -745,23 +762,22 @@ dependencies = [
 [[package]]
 name = "lorawan-device"
 version = "0.12.2"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
+source = "git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0#31bd7a798bf35ba522a7e524c26b8459a2f834f0"
 dependencies = [
  "defmt",
  "document-features",
  "fastrand",
  "futures",
  "heapless",
- "lora-modulation",
+ "lora-modulation 0.1.5 (git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0)",
  "lorawan 0.9.1",
  "rand_core",
- "seq-macro",
 ]
 
 [[package]]
 name = "lorawan-macros"
 version = "0.1.0"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
+source = "git+https://github.com/lora-rs/lora-rs.git?rev=31bd7a798bf35ba522a7e524c26b8459a2f834f0#31bd7a798bf35ba522a7e524c26b8459a2f834f0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -788,7 +804,7 @@ dependencies = [
  "embedded-storage",
  "futures",
  "heapless",
- "lora-phy",
+ "lora-phy 3.0.2-alpha (git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0)",
  "lorawan 0.1.0",
  "panic-probe",
  "panic-reset",
@@ -937,12 +953,6 @@ name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
-
-[[package]]
-name = "seq-macro"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3f0bf26fd526d2a95683cd0f87bf103b8539e2ca1ef48ce002d67aad59aa0b4"
 
 [[package]]
 name = "serde"
