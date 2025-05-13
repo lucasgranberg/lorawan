@@ -19,7 +19,7 @@ use crate::{
     device::types::{RfConfig, TxConfig},
     device::{rng::Rng, timer::Timer, Device},
 };
-use encoding::parser::{AsPhyPayloadBytes, DecryptedDataPayload, FRMMacCommands};
+use encoding::parser::{parse, AsPhyPayloadBytes, DecryptedDataPayload, FRMMacCommands};
 use encoding::{
     creator::{DataPayloadCreator, JoinRequestCreator},
     default_crypto::DefaultFactory,
@@ -29,7 +29,7 @@ use encoding::{
         TXParamSetupAnsCreator, UplinkMacCommandCreator,
     },
     maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator},
-    parser::{parse_with_factory, DataHeader, DevNonce, FCtrl, FRMPayload, PhyPayload},
+    parser::{DataHeader, FCtrl, FRMPayload, PhyPayload},
 };
 
 use heapless::Vec;
@@ -611,8 +611,7 @@ where
                 // signal that the session is expired
                 return Err(crate::mac::Error::SessionExpired);
             }
-            let mut phy =
-                DataPayloadCreator::new(buf).map_err(|e| crate::mac::Error::Creator(e))?;
+            let mut phy = DataPayloadCreator::new(buf).map_err(crate::mac::Error::Creator)?;
 
             let mut fctrl = FCtrl(0x0, true);
             if adr {
@@ -641,7 +640,7 @@ where
             let mut pos = 0usize;
             for cmd in self.uplink_cmds.iter() {
                 dyn_cmds[pos..pos + cmd.len()].copy_from_slice(cmd.build());
-                pos = pos + cmd.len();
+                pos += cmd.len();
             }
             let packet = phy
                 .build(
@@ -651,7 +650,7 @@ where
                     session.appskey(),
                     &DefaultFactory,
                 )
-                .map_err(|e| crate::mac::Error::Creator(e))?;
+                .map_err(crate::mac::Error::Creator)?;
             trace!("TX: {=[u8]:#02X}", packet);
             Ok(packet.len())
         } else {
@@ -757,14 +756,14 @@ where
         let len = self.create_join_request(buf)?;
         let rx_res = self.send_buffer(device, buf, len, Frame::Join).await?;
         if let Some((rx_len, _)) = rx_res {
-            match parse_with_factory(&mut buf[..rx_len as usize], DefaultFactory)
+            match parse(&mut buf[..rx_len as usize])
                 .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?
             {
                 PhyPayload::JoinAccept(encoding::parser::JoinAcceptPayload::Encrypted(
                     encrypted,
                 )) => {
-                    let decrypted = encrypted.decrypt(&self.credentials.app_key);
-                    if decrypted.validate_mic(&self.credentials.app_key) {
+                    let decrypted = encrypted.decrypt(&self.credentials.app_key, &DefaultFactory);
+                    if decrypted.validate_mic(&self.credentials.app_key, &DefaultFactory) {
                         let session = Session::derive_new(
                             &decrypted,
                             self.credentials.dev_nonce.into(),
@@ -854,7 +853,7 @@ where
         if let Some(ref mut session) = self.session {
             // Parse payload and copy into user bufer is provided
             if let Some((len, rx_quality)) = rx_res {
-                let res = parse_with_factory(&mut buf[..len as usize], DefaultFactory);
+                let res = parse(&mut buf[..len as usize]);
                 if let Ok(PhyPayload::Data(encoding::parser::DataPayload::Encrypted(_))) = res {
                     session.adr_ack_cnt_clear();
                 } else {
@@ -870,7 +869,8 @@ where
                         let fcnt = encrypted.fhdr().fcnt() as u32;
                         // use temporary variable for ack_next to only confirm if the message was correctly handled
                         let ack_next = encrypted.is_confirmed();
-                        if !encrypted.validate_mic(session.nwkskey().inner(), fcnt) {
+                        if !encrypted.validate_mic(session.nwkskey().inner(), fcnt, &DefaultFactory)
+                        {
                             return Err(crate::Error::Mac(crate::mac::Error::InvalidMic));
                         }
                         if !(fcnt > session.fcnt_down || fcnt == 0) {
@@ -884,6 +884,7 @@ where
                                 Some(session.nwkskey().inner()),
                                 Some(session.appskey().inner()),
                                 session.fcnt_down,
+                                &DefaultFactory,
                             )
                             .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?;
 
@@ -922,7 +923,7 @@ where
         }
     }
 }
-fn frm_payload<'a>(payload: DecryptedDataPayload<&'a mut [u8]>) -> FRMPayload<'a> {
+fn frm_payload(payload: DecryptedDataPayload<&mut [u8]>) -> FRMPayload<'_> {
     let fhdr_length = payload.fhdr_length();
     let fport = payload.f_port();
     let uplink = payload.is_uplink();
