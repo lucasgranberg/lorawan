@@ -22,9 +22,7 @@ serde = { version = "1.0", default-features = false, features = [
     "derive",
 ], optional = true }
 lora-modulation = { git = "https://github.com/lora-rs/lora-rs.git", rev = "a5e690a3f1f68c4e4c43efcd564467938c574ea3" }
-encoding = { package = "lorawan", git = "https://github.com/lora-rs/lora-rs.git", rev = "a5e690a3f1f68c4e4c43efcd564467938c574ea3", default-features = false, features = [
-    "default-crypto",
-] }
+encoding = { package = "lorawan", git = "https://github.com/lora-rs/lora-rs.git", rev = "a5e690a3f1f68c4e4c43efcd564467938c574ea3", default-features = false }
 lora-phy = { git = "https://github.com/lora-rs/lora-rs.git", rev = "a5e690a3f1f68c4e4c43efcd564467938c574ea3", default-features = false }
 
 [dev-dependencies]
