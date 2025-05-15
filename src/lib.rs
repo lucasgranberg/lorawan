@@ -13,6 +13,9 @@ pub(crate) mod fmt;
 
 pub mod device;
 pub mod mac;
+pub use encoding;
+pub use lora_modulation as modulation;
+pub use lora_phy as phy;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
