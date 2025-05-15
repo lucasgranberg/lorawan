@@ -21,11 +21,11 @@ defmt = { version = "0.3", optional = true }
 serde = { version = "1.0", default-features = false, features = [
     "derive",
 ], optional = true }
-lora-modulation = { git = "https://github.com/lora-rs/lora-rs.git", rev = "31bd7a798bf35ba522a7e524c26b8459a2f834f0" }
-encoding = { package = "lorawan", git = "https://github.com/lora-rs/lora-rs.git", rev = "31bd7a798bf35ba522a7e524c26b8459a2f834f0", default-features = false, features = [
+lora-modulation = { git = "https://github.com/lora-rs/lora-rs.git", rev = "a5e690a3f1f68c4e4c43efcd564467938c574ea3" }
+encoding = { package = "lorawan", git = "https://github.com/lora-rs/lora-rs.git", rev = "a5e690a3f1f68c4e4c43efcd564467938c574ea3", default-features = false, features = [
     "default-crypto",
 ] }
-lora-phy = { git = "https://github.com/lora-rs/lora-rs.git", rev = "31bd7a798bf35ba522a7e524c26b8459a2f834f0", default-features = false }
+lora-phy = { git = "https://github.com/lora-rs/lora-rs.git", rev = "a5e690a3f1f68c4e4c43efcd564467938c574ea3", default-features = false }
 
 [dev-dependencies]
 rand = "0.8"

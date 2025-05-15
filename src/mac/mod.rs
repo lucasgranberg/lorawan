@@ -19,7 +19,9 @@ use crate::{
     device::types::{RfConfig, TxConfig},
     device::{rng::Rng, timer::Timer, Device},
 };
-use encoding::parser::{AsPhyPayloadBytes, DecryptedDataPayload, FRMMacCommands};
+use encoding::parser::{
+    parse, AsPhyPayloadBytes, DecryptedDataPayload, EncryptedJoinAcceptPayload, FRMMacCommands,
+};
 use encoding::{
     creator::{DataPayloadCreator, JoinRequestCreator},
     default_crypto::DefaultFactory,
@@ -29,7 +31,7 @@ use encoding::{
         TXParamSetupAnsCreator, UplinkMacCommandCreator,
     },
     maccommands::{DLSettings, DownlinkMacCommand, MacCommandIterator},
-    parser::{parse_with_factory, DataHeader, DevNonce, FCtrl, FRMPayload, PhyPayload},
+    parser::{DataHeader, FCtrl, FRMPayload, PhyPayload},
 };
 
 use heapless::Vec;
@@ -708,10 +710,9 @@ where
                     device.radio().tx().await.map_err(crate::device::Error::Radio)?;
                     device.timer().reset();
                     trace!("SENT");
-
                     match self.rx_with_timeout(frame, device, buf, tx_data_rate, &chn).await {
-                        Ok(Some((num_read, rx_quality))) => {
-                            return Ok(Some((num_read, rx_quality)));
+                        Ok(Some(ret)) => {
+                            return Ok(Some(ret));
                         }
                         Ok(None) => {
                             if frame == Frame::Data {
@@ -757,49 +758,42 @@ where
         let len = self.create_join_request(buf)?;
         let rx_res = self.send_buffer(device, buf, len, Frame::Join).await?;
         if let Some((rx_len, _)) = rx_res {
-            match parse_with_factory(&mut buf[..rx_len as usize], DefaultFactory)
-                .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?
-            {
-                PhyPayload::JoinAccept(encoding::parser::JoinAcceptPayload::Encrypted(
-                    encrypted,
-                )) => {
-                    let decrypted = encrypted.decrypt(&self.credentials.app_key);
-                    if decrypted.validate_mic(&self.credentials.app_key) {
-                        let session = Session::derive_new(
-                            &decrypted,
-                            self.credentials.dev_nonce.into(),
-                            &self.credentials,
-                        );
-                        trace!("msg {=[u8]:02X}", decrypted.as_bytes());
-                        trace!("nwk {=[u8]:02X}", session.nwkskey().inner().0);
-                        trace!("app {=[u8]:02X}", session.appskey().inner().0);
-                        // trace!("dl_settings {:?}", decrypted.dl_settings());
-                        // trace!("rx_delay {:?}", decrypted.rx_delay());
-                        self.session.replace(session);
+            let encrypted = EncryptedJoinAcceptPayload::new(&mut buf[..rx_len as usize])
+                .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?;
 
-                        let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
-                            Self::validate_dl_settings::<D>(decrypted.dl_settings());
-                        if rx1_data_rate_offset_ack && rx2_data_rate_ack {
-                            self.handle_dl_settings(decrypted.dl_settings())?
-                        }
+            let decrypted = encrypted.decrypt(&self.credentials.app_key, &DefaultFactory);
 
-                        let delay = match decrypted.rx_delay() {
-                            0 => 1,
-                            _ => decrypted.rx_delay(),
-                        };
-                        self.configuration.rx_delay = Some(delay);
-                        if let Some(cf_list) = decrypted.c_f_list() {
-                            self.channel_plan.handle_cf_list(cf_list)?;
-                        }
-                        device
-                            .persist_to_non_volatile(&self.configuration, &self.credentials)
-                            .map_err(crate::device::Error::NonVolatileStore)?;
-                        Ok(())
-                    } else {
-                        Err(crate::Error::Mac(crate::mac::Error::InvalidMic))
-                    }
+            if decrypted.validate_mic(&self.credentials.app_key, &DefaultFactory) {
+                let session = Session::derive_new(
+                    &decrypted,
+                    self.credentials.dev_nonce.into(),
+                    &self.credentials,
+                );
+                trace!("msg {=[u8]:02X}", decrypted.as_bytes());
+                trace!("nwk {=[u8]:02X}", session.nwkskey().inner().0);
+                trace!("app {=[u8]:02X}", session.appskey().inner().0);
+                self.session.replace(session);
+
+                let (rx1_data_rate_offset_ack, rx2_data_rate_ack) =
+                    Self::validate_dl_settings::<D>(decrypted.dl_settings());
+                if rx1_data_rate_offset_ack && rx2_data_rate_ack {
+                    self.handle_dl_settings(decrypted.dl_settings())?
                 }
-                _ => Err(crate::Error::Mac(crate::mac::Error::InvalidPayloadType)),
+
+                let delay = match decrypted.rx_delay() {
+                    0 => 1,
+                    _ => decrypted.rx_delay(),
+                };
+                self.configuration.rx_delay = Some(delay);
+                if let Some(cf_list) = decrypted.c_f_list() {
+                    self.channel_plan.handle_cf_list(cf_list)?;
+                }
+                device
+                    .persist_to_non_volatile(&self.configuration, &self.credentials)
+                    .map_err(crate::device::Error::NonVolatileStore)?;
+                Ok(())
+            } else {
+                Err(crate::Error::Mac(crate::mac::Error::InvalidMic))
             }
         } else {
             Err(crate::Error::Mac(crate::mac::Error::NoResponse))
@@ -854,7 +848,7 @@ where
         if let Some(ref mut session) = self.session {
             // Parse payload and copy into user bufer is provided
             if let Some((len, rx_quality)) = rx_res {
-                let res = parse_with_factory(&mut buf[..len as usize], DefaultFactory);
+                let res = parse(&mut buf[..len as usize]);
                 if let Ok(PhyPayload::Data(encoding::parser::DataPayload::Encrypted(_))) = res {
                     session.adr_ack_cnt_clear();
                 } else {
@@ -870,7 +864,8 @@ where
                         let fcnt = encrypted.fhdr().fcnt() as u32;
                         // use temporary variable for ack_next to only confirm if the message was correctly handled
                         let ack_next = encrypted.is_confirmed();
-                        if !encrypted.validate_mic(session.nwkskey().inner(), fcnt) {
+                        if !encrypted.validate_mic(session.nwkskey().inner(), fcnt, &DefaultFactory)
+                        {
                             return Err(crate::Error::Mac(crate::mac::Error::InvalidMic));
                         }
                         if !(fcnt > session.fcnt_down || fcnt == 0) {
@@ -884,6 +879,7 @@ where
                                 Some(session.nwkskey().inner()),
                                 Some(session.appskey().inner()),
                                 session.fcnt_down,
+                                &DefaultFactory,
                             )
                             .map_err(|e| crate::Error::<D>::Mac(Error::Encoding(e)))?;
 

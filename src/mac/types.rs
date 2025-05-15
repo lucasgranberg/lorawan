@@ -1,6 +1,7 @@
 //! Properties used in LoRaWAN MAC processing.
 
-use encoding::keys::{AppEui, AppKey, AppSKey, CryptoFactory, DevEui, NwkSKey};
+use encoding::default_crypto::DefaultFactory;
+use encoding::keys::{AppEui, AppKey, AppSKey, DevEui, NwkSKey};
 use encoding::parser::{DecryptedJoinAcceptPayload, DevAddr, DevNonce};
 
 pub(crate) struct RxWindows {
@@ -83,14 +84,14 @@ pub struct Session {
 }
 impl Session {
     /// Creation.
-    pub fn derive_new<T: AsRef<[u8]> + AsMut<[u8]>, F: CryptoFactory>(
-        decrypt: &DecryptedJoinAcceptPayload<T, F>,
+    pub fn derive_new<T: AsRef<[u8]> + AsMut<[u8]>>(
+        decrypt: &DecryptedJoinAcceptPayload<T>,
         devnonce: DevNonce<[u8; 2]>,
         credentials: &Credentials,
     ) -> Self {
         Self::new(
-            decrypt.derive_nwkskey(&devnonce, &credentials.app_key),
-            decrypt.derive_appskey(&devnonce, &credentials.app_key),
+            decrypt.derive_nwkskey(&devnonce, &credentials.app_key, &DefaultFactory),
+            decrypt.derive_appskey(&devnonce, &credentials.app_key, &DefaultFactory),
             DevAddr::new([
                 decrypt.dev_addr().as_ref()[0],
                 decrypt.dev_addr().as_ref()[1],
