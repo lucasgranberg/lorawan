@@ -20,7 +20,8 @@ use crate::{
     device::{rng::Rng, timer::Timer, Device},
 };
 use encoding::parser::{
-    parse, AsPhyPayloadBytes, DecryptedDataPayload, EncryptedJoinAcceptPayload, FRMMacCommands,
+    parse, AsPhyPayloadBytes, DecryptedDataPayload, DevNonce, EncryptedJoinAcceptPayload,
+    FRMMacCommands,
 };
 use encoding::{
     creator::{DataPayloadCreator, JoinRequestCreator},
@@ -766,7 +767,7 @@ where
             if decrypted.validate_mic(&self.credentials.app_key, &DefaultFactory) {
                 let session = Session::derive_new(
                     &decrypted,
-                    self.credentials.dev_nonce.into(),
+                    DevNonce::<[u8; 2]>::new(self.credentials.dev_nonce.to_le_bytes()).unwrap(),
                     &self.credentials,
                 );
                 trace!("msg {=[u8]:02X}", decrypted.as_bytes());
