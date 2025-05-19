@@ -697,14 +697,28 @@ checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
 [[package]]
 name = "lora-modulation"
 version = "0.1.5"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
+source = "git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea#3d1df30b5d569dd093ed188445b134f6a9533fea"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "lora-modulation"
 version = "0.1.5"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3#a5e690a3f1f68c4e4c43efcd564467938c574ea3"
+source = "git+https://github.com/lora-rs/lora-rs.git?rev=3dac96484d97636c61c667e4c4ff4d80c02b11b0#3dac96484d97636c61c667e4c4ff4d80c02b11b0"
+
+[[package]]
+name = "lora-phy"
+version = "3.0.2-alpha"
+source = "git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea#3d1df30b5d569dd093ed188445b134f6a9533fea"
 dependencies = [
  "defmt",
+ "document-features",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "lora-modulation 0.1.5 (git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea)",
+ "lorawan-device",
+ "num-traits",
 ]
 
 [[package]]
@@ -720,20 +734,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lora-phy"
-version = "3.0.2-alpha"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3#a5e690a3f1f68c4e4c43efcd564467938c574ea3"
-dependencies = [
- "defmt",
- "document-features",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "lora-modulation 0.1.5 (git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3)",
- "lorawan-device",
- "num-traits",
-]
-
-[[package]]
 name = "lorawan"
 version = "0.1.0"
 dependencies = [
@@ -741,8 +741,8 @@ dependencies = [
  "defmt",
  "futures",
  "heapless",
- "lora-modulation 0.1.5 (git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3)",
- "lora-phy 3.0.2-alpha (git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3)",
+ "lora-modulation 0.1.5 (git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea)",
+ "lora-phy 3.0.2-alpha (git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea)",
  "lorawan 0.9.1",
  "serde",
 ]
@@ -750,7 +750,7 @@ dependencies = [
 [[package]]
 name = "lorawan"
 version = "0.9.1"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3#a5e690a3f1f68c4e4c43efcd564467938c574ea3"
+source = "git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea#3d1df30b5d569dd093ed188445b134f6a9533fea"
 dependencies = [
  "aes",
  "cmac",
@@ -762,14 +762,14 @@ dependencies = [
 [[package]]
 name = "lorawan-device"
 version = "0.12.2"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3#a5e690a3f1f68c4e4c43efcd564467938c574ea3"
+source = "git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea#3d1df30b5d569dd093ed188445b134f6a9533fea"
 dependencies = [
  "defmt",
  "document-features",
  "fastrand",
  "futures",
  "heapless",
- "lora-modulation 0.1.5 (git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3)",
+ "lora-modulation 0.1.5 (git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea)",
  "lorawan 0.9.1",
  "rand_core",
 ]
@@ -777,7 +777,7 @@ dependencies = [
 [[package]]
 name = "lorawan-macros"
 version = "0.1.0"
-source = "git+https://github.com/lora-rs/lora-rs.git?rev=a5e690a3f1f68c4e4c43efcd564467938c574ea3#a5e690a3f1f68c4e4c43efcd564467938c574ea3"
+source = "git+https://github.com/lucasgranberg/lora-rs.git?rev=3d1df30b5d569dd093ed188445b134f6a9533fea#3d1df30b5d569dd093ed188445b134f6a9533fea"
 dependencies = [
  "proc-macro2",
  "quote",

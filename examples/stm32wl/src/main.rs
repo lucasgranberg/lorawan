@@ -67,7 +67,7 @@ async fn main(_spawner: Spawner) {
         }
         'sending: while mac.is_joined() {
             defmt::info!("SENDING");
-            let send_res = mac.send(&mut device, &mut buffer, b"PING", 1, false, None).await;
+            let send_res = mac.send(&mut device, &mut buffer, b"PING", 1, false).await;
             match send_res {
                 Ok(Some((len, status))) => {
                     defmt::info!("Sent: Rx len: {} RSSI: {} SNR:{}", len, status.rssi, status.snr)

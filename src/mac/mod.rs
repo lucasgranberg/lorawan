@@ -614,8 +614,7 @@ where
                 // signal that the session is expired
                 return Err(crate::mac::Error::SessionExpired);
             }
-            let mut phy =
-                DataPayloadCreator::new(buf).map_err(|e| crate::mac::Error::Creator(e))?;
+            let mut phy = DataPayloadCreator::new(buf).map_err(crate::mac::Error::Creator)?;
 
             let mut fctrl = FCtrl(0x0, true);
             if adr {
@@ -644,7 +643,7 @@ where
             let mut pos = 0usize;
             for cmd in self.uplink_cmds.iter() {
                 if pos + cmd.len() <= 15 {
-                dyn_cmds[pos..pos + cmd.len()].copy_from_slice(cmd.build());
+                    dyn_cmds[pos..pos + cmd.len()].copy_from_slice(cmd.build());
                     pos += cmd.len();
                 } else {
                     break;
@@ -658,7 +657,7 @@ where
                     session.appskey(),
                     &DefaultFactory,
                 )
-                .map_err(|e| crate::mac::Error::Creator(e))?;
+                .map_err(crate::mac::Error::Creator)?;
             trace!("TX: {=[u8]:#02X}", packet);
             Ok(packet.len())
         } else {
@@ -852,8 +851,8 @@ where
         // Handle received data
         if let Some(ref mut session) = self.session {
             // Parse payload and copy into user bufer is provided
-            if let Some((len, rx_quality)) = rx_res {
-                let res = parse(&mut buf[..len as usize]);
+            if let Some((rx_len, rx_quality)) = rx_res {
+                let res = parse(&mut buf[..rx_len as usize]);
                 if let Ok(PhyPayload::Data(encoding::parser::DataPayload::Encrypted(_))) = res {
                     session.adr_ack_cnt_clear();
                 } else {
@@ -923,7 +922,7 @@ where
         }
     }
 }
-fn frm_payload<'a>(payload: DecryptedDataPayload<&'a mut [u8]>) -> FRMPayload<'a> {
+fn frm_payload(payload: DecryptedDataPayload<&mut [u8]>) -> FRMPayload<'_> {
     let fhdr_length = payload.fhdr_length();
     let fport = payload.f_port();
     let uplink = payload.is_uplink();
