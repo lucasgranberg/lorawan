@@ -643,8 +643,12 @@ where
             let mut dyn_cmds = [0u8; 255];
             let mut pos = 0usize;
             for cmd in self.uplink_cmds.iter() {
+                if pos + cmd.len() <= 15 {
                 dyn_cmds[pos..pos + cmd.len()].copy_from_slice(cmd.build());
-                pos = pos + cmd.len();
+                    pos += cmd.len();
+                } else {
+                    break;
+                }
             }
             let packet = phy
                 .build(
