@@ -215,13 +215,6 @@ where
         R::get_rx1_dr(tx_dr, offset).unwrap_or(R::default_data_rate())
     }
 
-    fn rx2_data_rate(&self, frame: &Frame) -> DR {
-        match frame {
-            Frame::Join => R::default_rx2_data_rate(),
-            Frame::Data => self.configuration.rx2_data_rate.unwrap_or(R::default_rx2_data_rate()),
-        }
-    }
-
     fn adr_ack_limit<D: DeviceSpecs>() -> u8 {
         D::adr_ack_limit().unwrap_or(R::default_adr_ack_limit())
     }
@@ -309,39 +302,21 @@ where
 
     fn create_rf_config<D: Device>(
         &self,
-        frame: &Frame,
         window: &Window,
         data_rate: DR,
         channel: &C::Channel,
     ) -> Result<RfConfig, crate::Error<D>> {
         let data_rate = match window {
             Window::_1 => self.rx1_data_rate(data_rate),
-            Window::_2 => self.rx2_data_rate(frame),
+            Window::_2 => self.configuration.rx2_data_rate.unwrap_or(R::default_rx2_data_rate()),
         };
         let data_rate = R::convert_data_rate(data_rate)?;
-        let rf_config = match (frame, window) {
-            (Frame::Join, Window::_1) => RfConfig {
-                frequency: channel.get_dl_frequency(),
-                coding_rate: CodingRate::_4_5,
-                data_rate,
-            },
-            (Frame::Join, Window::_2) => RfConfig {
-                frequency: R::default_rx2_frequency(),
-                coding_rate: CodingRate::_4_5,
-                data_rate,
-            },
-            (Frame::Data, Window::_1) => RfConfig {
-                frequency: channel.get_dl_frequency(),
-                coding_rate: CodingRate::_4_5,
-                data_rate,
-            },
-            (Frame::Data, Window::_2) => RfConfig {
-                frequency: R::default_rx2_frequency(),
-                coding_rate: CodingRate::_4_5,
-                data_rate,
-            },
+        let frequency = match window {
+            Window::_1 => channel.get_dl_frequency(),
+            Window::_2 => self.configuration.rx2_frequency.unwrap_or_else(R::default_rx2_frequency),
         };
-        Ok(rf_config)
+
+        Ok(RfConfig { frequency, coding_rate: CodingRate::_4_5, data_rate })
     }
 
     async fn prepare_for_rx<D: Device>(
@@ -568,7 +543,7 @@ where
     ) -> Result<Option<(u8, PacketStatus)>, crate::Error<D>> {
         let windows = self.get_rx_windows(frame);
 
-        let rf_config = self.create_rf_config(&frame, &Window::_1, data_rate, channel)?;
+        let rf_config = self.create_rf_config(&Window::_1, data_rate, channel)?;
         debug!("rf config RX1 {:?}", rf_config);
         device
             .timer()
@@ -585,7 +560,7 @@ where
             Err(_e) => {}
         }
 
-        let rf_config = self.create_rf_config(&frame, &Window::_2, data_rate, channel)?;
+        let rf_config = self.create_rf_config(&Window::_2, data_rate, channel)?;
         debug!("rf config RX2 {:?}", rf_config);
         let packet_params = self.prepare_for_rx(&rf_config, device).await?;
         device
